@@ -17,6 +17,7 @@ class RoomTile
     public const COLOR_YELLOW = 'yellow';
     public const COLOR_GREEN = 'green';
     public const COLOR_BLUE = 'blue';
+    public const COLOR_DINGHY = 'dinghy'; // Special color for dinghy tile
 
     // Orientation constants (in degrees)
     public const ORIENTATION_0 = 0;     // Original orientation

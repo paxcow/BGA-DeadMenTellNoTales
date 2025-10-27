@@ -28,8 +28,30 @@ ALTER TABLE `player` ADD `player_max_actions` INT UNSIGNED NOT NULL DEFAULT '5';
 ALTER TABLE `player` ADD `player_character_card_id` INT NULL;
 ALTER TABLE `player` ADD `player_item_card_id` INT NULL;
 
--- Standard "card" table for use with the "Deck" tools (Character Cards, Item Cards, Skelit's Revenge Cards)
-CREATE TABLE IF NOT EXISTS `card` (
+-- Separate card tables for different card management needs
+
+-- Skelit Revenge Cards - BGA DECK component with auto-reshuffle (19 cards)
+CREATE TABLE IF NOT EXISTS `skelit_card` (
+  `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `card_type` varchar(16) NOT NULL,
+  `card_type_arg` int(11) NOT NULL,
+  `card_location` varchar(16) NOT NULL,
+  `card_location_arg` int(11) NOT NULL,
+  PRIMARY KEY (`card_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+-- Character Cards - BGA DECK component without reshuffle (7 cards)
+CREATE TABLE IF NOT EXISTS `character_card` (
+  `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `card_type` varchar(16) NOT NULL,
+  `card_type_arg` int(11) NOT NULL,
+  `card_location` varchar(16) NOT NULL,
+  `card_location_arg` int(11) NOT NULL,
+  PRIMARY KEY (`card_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 AUTO_INCREMENT=1 ;
+
+-- Item Cards - Custom management for swapping (7 cards)
+CREATE TABLE IF NOT EXISTS `item_card` (
   `card_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `card_type` varchar(16) NOT NULL,
   `card_type_arg` int(11) NOT NULL,
