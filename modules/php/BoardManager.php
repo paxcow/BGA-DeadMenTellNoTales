@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Bga\Games\DeadMenPax;
 
 use Bga\GameFramework\Table;
+use Bga\Games\DeadMenPax\DB\RoomTileDBManager;
 
 /**
  * Manages the board state and tile placement for Dead Men Pax
@@ -14,16 +15,12 @@ class BoardManager
     private array $tiles = [];           // [x][y] => RoomTile
     private array $tileById = [];        // [id] => RoomTile
     private array $tilesByPosition = []; // [y][x] => RoomTile
-    private PirateManager $pirateManager;
-    private TokenManager $tokenManager;
-    private ItemManager $itemManager;
+    private RoomTileDBManager $roomTileDBManager;
 
-    public function __construct(Table $game, PirateManager $pirateManager, TokenManager $tokenManager, ItemManager $itemManager)
+    public function __construct(Table $game)
     {
         $this->game = $game;
-        $this->pirateManager = $pirateManager;
-        $this->tokenManager = $tokenManager;
-        $this->itemManager = $itemManager;
+        $this->roomTileDBManager = new RoomTileDBManager($game);
         $this->loadFromDatabase();
     }
 
@@ -32,12 +29,10 @@ class BoardManager
      */
     private function loadFromDatabase(): void
     {
-        $tiles = $this->game->getObjectListFromDB(
-            "SELECT * FROM room_tile ORDER BY tile_id"
-        );
+        $tiles = $this->roomTileDBManager->getAllObjects();
 
         foreach ($tiles as $tileData) {
-            $tile = RoomTile::fromArray($tileData);
+            $tile = RoomTile::fromArray($tileData->toArray());
             $this->tiles[$tile->getId()] = $tile;
             $this->tilesByPosition[$tile->getY()][$tile->getX()] = $tile;
         }
@@ -65,7 +60,7 @@ class BoardManager
 
         // Place the tile
         $tile->setPosition($x, $y);
-        $this->tiles[$tile->getId()] = $tile;
+        $this->tiles[$tile->getTileId()] = $tile;
         $this->tilesByPosition[$y][$x] = $tile;
 
         // Update database
@@ -280,67 +275,56 @@ class BoardManager
      */
     public function handleChainExplosions(RoomTile $startTile): array
     {
-        $explodedTiles = [];
+        $explosionResult = ['exploded_tiles' => []];
         $toProcess = [$startTile];
         $processed = [];
 
         while (!empty($toProcess)) {
             $currentTile = array_shift($toProcess);
-            
-            if (in_array($currentTile->getId(), $processed)) {
+
+            if (in_array($currentTile->getTileId(), $processed)) {
                 continue;
             }
-            
-            $processed[] = $currentTile->getId();
+
+            $processed[] = $currentTile->getTileId();
 
             if ($currentTile->willExplode()) {
-                $explodedTiles[] = $currentTile;
-                
                 // Determine explosion type
                 $explosionType = $currentTile->hasPowderKeg() && !$currentTile->isPowderKegExploded() ? 'powder_keg' : 'fire';
-                
+
                 // Handle powder keg explosion
                 if ($explosionType === 'powder_keg') {
                     $currentTile->explodePowderKeg();
                 }
-                
+
                 // Set fire level to max (exploded)
                 $currentTile->setFireLevel(6);
-                
-                // Handle effects on pirates in this tile
-                $piratesInTile = $this->pirateManager->getPiratesAt($currentTile->getX(), $currentTile->getY());
-                foreach ($piratesInTile as $playerId) {
-                    $this->pirateManager->handleExplosionDamage($playerId, $explosionType);
-                }
-                
-                // Handle effects on tokens in this tile
-                $tokensInTile = $this->tokenManager->getTokensInRoom($currentTile->getX(), $currentTile->getY());
-                foreach ($tokensInTile as $token) {
-                    $this->tokenManager->destroyToken($token['token_id']);
-                }
-                
-                // Handle effects on items in this tile (if any)
-                $itemsInTile = $this->itemManager->getItemsInPositions([[$currentTile->getX(), $currentTile->getY()]]);
-                foreach ($itemsInTile as $item) {
-                    $this->itemManager->destroyItem($item['card_id']);
-                }
-                
+
+                // Add to the result to be processed by the Game mediator
+                $explosionResult['exploded_tiles'][] = [
+                    'x' => $currentTile->getX(),
+                    'y' => $currentTile->getY(),
+                    'type' => $explosionType,
+                    'tile_id' => $currentTile->getTileId(),
+                ];
+
                 // Add fire to adjacent tiles
                 $adjacentTiles = $this->getAdjacentTiles($currentTile);
                 foreach ($adjacentTiles as $adjacentTile) {
                     $adjacentTile->increaseFireLevel(1);
-                    
-                    if (!in_array($adjacentTile->getId(), $processed)) {
+                    $this->saveToDatabase($adjacentTile); // Save adjacent tile changes
+
+                    if (!in_array($adjacentTile->getTileId(), $processed)) {
                         $toProcess[] = $adjacentTile;
                     }
                 }
-                
+
                 // Save tile state to database
                 $this->saveToDatabase($currentTile);
-                
+
                 // Notify explosion
                 $this->game->notifyAllPlayers("explosion", clienttranslate('An explosion occurs in room!'), [
-                    "tile_id" => $currentTile->getId(),
+                    "tile_id" => $currentTile->getTileId(),
                     "x" => $currentTile->getX(),
                     "y" => $currentTile->getY(),
                     "type" => $explosionType,
@@ -349,7 +333,7 @@ class BoardManager
             }
         }
 
-        return $explodedTiles;
+        return $explosionResult;
     }
 
     /**
@@ -417,16 +401,10 @@ class BoardManager
     /**
      * Save tile to database
      */
-    private function saveToDatabase(RoomTile $tile): void
+    public function saveToDatabase(RoomTile $tile): void
     {
-        $data = $tile->toArray();
-        
-        $sql = "REPLACE INTO room_tile (tile_id, x, y, fire_level, has_powder_keg, powder_keg_exploded, doors, original_doors, orientation, color, pips, has_trapdoor, is_starting_tile) 
-                VALUES ({$data['tile_id']}, {$data['x']}, {$data['y']}, {$data['fire_level']}, 
-                        {$data['has_powder_keg']}, {$data['powder_keg_exploded']}, {$data['doors']}, {$data['original_doors']}, {$data['orientation']},
-                        '{$data['color']}', {$data['pips']}, {$data['has_trapdoor']}, {$data['is_starting_tile']})";
-        
-        $this->game->DbQuery($sql);
+        $model = RoomTileModel::fromArray($tile->toArray());
+        $this->roomTileDBManager->saveObjectToDB($model);
     }
 
     // Helper methods for pathfinding

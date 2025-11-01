@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Bga\Games\DeadMenPax;
 
 use Bga\GameFramework\Table;
+use Bga\Games\DeadMenPax\DB\PlayerDBManager;
 
 /**
  * Manages pirate state, actions, and movement for Dead Men Pax
@@ -11,10 +12,46 @@ use Bga\GameFramework\Table;
 class PirateManager
 {
     private Table $game;
+    private PlayerDBManager $playerDBManager;
+    
+    // In-memory storage for pirate data
+    private array $pirates = [];       // [playerId] => pirate object
+    private bool $initialized = false;
 
     public function __construct(Table $game)
     {
         $this->game = $game;
+        $this->playerDBManager = new PlayerDBManager($game);
+        $this->initFromDatabase();
+    }
+
+    /**
+     * Initialize pirate data from database into memory
+     */
+    public function initFromDatabase(): void
+    {
+        // Clear existing data
+        $this->pirates = [];
+        
+        // Load all player/pirate data from database
+        $allPlayers = $this->playerDBManager->getAllObjects();
+        
+        foreach ($allPlayers as $player) {
+            $this->pirates[$player->id] = $player;
+        }
+        
+        $this->initialized = true;
+    }
+
+    /**
+     * Save a pirate's data to database
+     */
+    private function savePirate($pirate): void
+    {
+        $this->playerDBManager->saveObjectToDB($pirate);
+        
+        // Update in-memory copy
+        $this->pirates[$pirate->id] = $pirate;
     }
 
     /**
@@ -22,14 +59,16 @@ class PirateManager
      */
     public function getPirateLocation(int $playerId): array
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_room_x, player_room_y, player_is_on_ship FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return ['x' => -1, 'y' => -1, 'is_on_ship' => false];
+        }
+        
+        $pirate = $this->pirates[$playerId];
         
         return [
-            'x' => (int)$player['player_room_x'],
-            'y' => (int)$player['player_room_y'], 
-            'is_on_ship' => (bool)$player['player_is_on_ship']
+            'x' => $pirate->roomX,
+            'y' => $pirate->roomY, 
+            'is_on_ship' => $pirate->isOnShip
         ];
     }
 
@@ -38,8 +77,15 @@ class PirateManager
      */
     public function movePirate(int $playerId, int $toX, int $toY): bool
     {
-        // Update database
-        $this->game->DbQuery("UPDATE player SET player_room_x = $toX, player_room_y = $toY, player_is_on_ship = 1 WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return false;
+        }
+        
+        $pirate = $this->pirates[$playerId];
+        $pirate->roomX = $toX;
+        $pirate->roomY = $toY;
+        $pirate->isOnShip = true;
+        $this->savePirate($pirate);
         
         return true;
     }
@@ -49,11 +95,11 @@ class PirateManager
      */
     public function getRemainingActions(int $playerId): int
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_actions_remaining FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return 0;
+        }
         
-        return (int)$player['player_actions_remaining'];
+        return $this->pirates[$playerId]->actionsRemaining;
     }
 
     /**
@@ -61,13 +107,18 @@ class PirateManager
      */
     public function spendAction(int $playerId): bool
     {
-        $remaining = $this->getRemainingActions($playerId);
-        
-        if ($remaining <= 0) {
+        if (!isset($this->pirates[$playerId])) {
             return false;
         }
         
-        $this->game->DbQuery("UPDATE player SET player_actions_remaining = player_actions_remaining - 1 WHERE player_id = $playerId");
+        $pirate = $this->pirates[$playerId];
+        
+        if ($pirate->actionsRemaining <= 0) {
+            return false;
+        }
+        
+        $pirate->actionsRemaining--;
+        $this->savePirate($pirate);
         
         return true;
     }
@@ -77,8 +128,13 @@ class PirateManager
      */
     public function resetActions(int $playerId): void
     {
-        $maxActions = $this->getMaxActions($playerId);
-        $this->game->DbQuery("UPDATE player SET player_actions_remaining = $maxActions WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
+        
+        $pirate = $this->pirates[$playerId];
+        $pirate->actionsRemaining = $pirate->maxActions;
+        $this->savePirate($pirate);
     }
 
     /**
@@ -86,11 +142,11 @@ class PirateManager
      */
     public function getMaxActions(int $playerId): int
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_max_actions FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return 5; // Default value
+        }
         
-        return (int)$player['player_max_actions'];
+        return $this->pirates[$playerId]->maxActions;
     }
 
     /**
@@ -115,11 +171,11 @@ class PirateManager
      */
     public function getFatigueLevel(int $playerId): int
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_fatigue FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return 0;
+        }
         
-        return (int)$player['player_fatigue'];
+        return $this->pirates[$playerId]->fatigue;
     }
 
     /**
@@ -127,20 +183,24 @@ class PirateManager
      */
     public function adjustFatigue(int $playerId, int $change): void
     {
-        $this->game->DbQuery("UPDATE player SET player_fatigue = GREATEST(0, player_fatigue + $change) WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
         
-        $newFatigue = $this->getFatigueLevel($playerId);
+        $pirate = $this->pirates[$playerId];
+        $pirate->fatigue = max(0, $pirate->fatigue + $change);
+        $this->savePirate($pirate);
         
         // Notify fatigue change
         $this->game->notifyAllPlayers("fatigueChanged", clienttranslate('${player_name}\'s fatigue changes to ${fatigue}'), [
             "player_id" => $playerId,
             "player_name" => $this->game->getPlayerNameById($playerId),
-            "fatigue" => $newFatigue,
+            "fatigue" => $pirate->fatigue,
             "change" => $change
         ]);
         
         // Check if player died from too much fatigue
-        if ($newFatigue >= 12) {
+        if ($pirate->fatigue >= 12) {
             $this->killPirate($playerId, 'fatigue');
         }
     }
@@ -150,11 +210,11 @@ class PirateManager
      */
     public function getBattleStrength(int $playerId): int
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_battle_strength FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return 0;
+        }
         
-        return (int)$player['player_battle_strength'];
+        return $this->pirates[$playerId]->battleStrength;
     }
 
     /**
@@ -162,15 +222,19 @@ class PirateManager
      */
     public function adjustBattleStrength(int $playerId, int $change): void
     {
-        $this->game->DbQuery("UPDATE player SET player_battle_strength = GREATEST(0, LEAST(12, player_battle_strength + $change)) WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
         
-        $newStrength = $this->getBattleStrength($playerId);
+        $pirate = $this->pirates[$playerId];
+        $pirate->battleStrength = max(0, min(12, $pirate->battleStrength + $change));
+        $this->savePirate($pirate);
         
         // Notify battle strength change
         $this->game->notifyAllPlayers("battleStrengthChanged", clienttranslate('${player_name}\'s battle strength changes to ${strength}'), [
             "player_id" => $playerId,
             "player_name" => $this->game->getPlayerNameById($playerId),
-            "battle_strength" => $newStrength,
+            "battle_strength" => $pirate->battleStrength,
             "change" => $change
         ]);
     }
@@ -180,22 +244,22 @@ class PirateManager
      */
     public function getPiratesInPositions(array $positions): array
     {
-        if (empty($positions)) {
-            return [];
+        $result = [];
+        
+        foreach ($this->pirates as $playerId => $pirate) {
+            if (!$pirate->isOnShip) {
+                continue; // Skip dead pirates
+            }
+            
+            foreach ($positions as $pos) {
+                if ($pirate->roomX === $pos[0] && $pirate->roomY === $pos[1]) {
+                    $result[] = $playerId;
+                    break; // Found match for this pirate, no need to check other positions
+                }
+            }
         }
         
-        $conditions = [];
-        foreach ($positions as $pos) {
-            $conditions[] = "(player_room_x = {$pos[0]} AND player_room_y = {$pos[1]})";
-        }
-        
-        $whereClause = implode(' OR ', $conditions);
-        
-        $pirates = $this->game->getCollectionFromDb(
-            "SELECT player_id FROM player WHERE player_is_on_ship = 1 AND ($whereClause)"
-        );
-        
-        return array_keys($pirates);
+        return $result;
     }
 
     /**
@@ -227,8 +291,15 @@ class PirateManager
      */
     public function killPirate(int $playerId, string $cause = 'unknown'): void
     {
-        // Move pirate off the ship
-        $this->game->DbQuery("UPDATE player SET player_is_on_ship = 0, player_room_x = -1, player_room_y = -1 WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
+        
+        $pirate = $this->pirates[$playerId];
+        $pirate->isOnShip = false;
+        $pirate->roomX = -1;
+        $pirate->roomY = -1;
+        $this->savePirate($pirate);
         
         // Notify player death
         $this->game->notifyAllPlayers("playerDied", clienttranslate('${player_name} has died from ${cause}!'), [
@@ -251,11 +322,11 @@ class PirateManager
      */
     public function isPirateAlive(int $playerId): bool
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_is_on_ship FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return false;
+        }
         
-        return (bool)$player['player_is_on_ship'];
+        return $this->pirates[$playerId]->isOnShip;
     }
 
     /**
@@ -263,11 +334,15 @@ class PirateManager
      */
     public function getAlivePirates(): array
     {
-        $pirates = $this->game->getCollectionFromDb(
-            "SELECT player_id FROM player WHERE player_is_on_ship = 1"
-        );
+        $alivePirates = [];
         
-        return array_keys($pirates);
+        foreach ($this->pirates as $playerId => $pirate) {
+            if ($pirate->isOnShip) {
+                $alivePirates[] = $playerId;
+            }
+        }
+        
+        return $alivePirates;
     }
 
     /**
@@ -285,7 +360,27 @@ class PirateManager
      */
     public function setMaxActions(int $playerId, int $maxActions): void
     {
-        $this->game->DbQuery("UPDATE player SET player_max_actions = $maxActions WHERE player_id = $playerId");
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
+        
+        $pirate = $this->pirates[$playerId];
+        $pirate->maxActions = $maxActions;
+        $this->savePirate($pirate);
+    }
+
+    /**
+     * Assign an item to a player
+     */
+    public function assignItem(int $playerId, ?int $itemId): void
+    {
+        if (!isset($this->pirates[$playerId])) {
+            return;
+        }
+        
+        $pirate = $this->pirates[$playerId];
+        $pirate->itemCardId = $itemId;
+        $this->savePirate($pirate);
     }
 
     /**
@@ -293,22 +388,29 @@ class PirateManager
      */
     public function getPlayerStats(int $playerId): array
     {
-        $player = $this->game->getObjectFromDB(
-            "SELECT player_fatigue, player_battle_strength, player_actions_remaining, player_max_actions, 
-                    player_room_x, player_room_y, player_is_on_ship 
-             FROM player WHERE player_id = $playerId"
-        );
+        if (!isset($this->pirates[$playerId])) {
+            return [
+                'fatigue' => 0,
+                'battle_strength' => 0,
+                'actions_remaining' => 0,
+                'max_actions' => 5,
+                'position' => ['x' => -1, 'y' => -1],
+                'is_alive' => false
+            ];
+        }
+        
+        $pirate = $this->pirates[$playerId];
         
         return [
-            'fatigue' => (int)$player['player_fatigue'],
-            'battle_strength' => (int)$player['player_battle_strength'],
-            'actions_remaining' => (int)$player['player_actions_remaining'],
-            'max_actions' => (int)$player['player_max_actions'],
+            'fatigue' => $pirate->fatigue,
+            'battle_strength' => $pirate->battleStrength,
+            'actions_remaining' => $pirate->actionsRemaining,
+            'max_actions' => $pirate->maxActions,
             'position' => [
-                'x' => (int)$player['player_room_x'],
-                'y' => (int)$player['player_room_y']
+                'x' => $pirate->roomX,
+                'y' => $pirate->roomY
             ],
-            'is_alive' => (bool)$player['player_is_on_ship']
+            'is_alive' => $pirate->isOnShip
         ];
     }
 }

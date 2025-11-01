@@ -6,6 +6,7 @@ namespace Bga\Games\DeadMenPax;
 use Bga\GameFramework\Table;
 use Bga\Games\DeadMenPax\DB\DBManager;
 use Bga\Games\DeadMenPax\DB\Models\CharacterCardModel;
+use Bga\Games\DeadMenPax\DB\PlayerDBManager;
 
 /**
  * Manages Character cards using BGA DECK component
@@ -15,6 +16,7 @@ class CharacterDeckManager
 {
     private Table $game;
     private $characterDeck; // BGA Deck component
+    private PlayerDBManager $playerDBManager;
     
     // Card locations
     public const LOCATION_DECK = 'deck';
@@ -34,6 +36,7 @@ class CharacterDeckManager
     {
         $this->game = $game;
         $this->characterDeck = $this->game->deckFactory->createDeck('character_card');
+        $this->playerDBManager = new PlayerDBManager($game);
         
         // NO auto-reshuffle: character deck depletes permanently
         $this->characterDeck->autoreshuffle = false;
@@ -74,8 +77,9 @@ class CharacterDeckManager
             $characterCard = $this->characterDeck->pickCard(self::LOCATION_DECK, $playerId);
             
             if ($characterCard) {
-                // Update player table with character card reference
-                $this->game->DbQuery("UPDATE player SET player_character_card_id = {$characterCard['id']} WHERE player_id = $playerId");
+                $player = $this->playerDBManager->createObjectFromDB($playerId);
+                $player->characterCardId = $characterCard['id'];
+                $this->playerDBManager->saveObjectToDB($player);
                 
                 // Apply character setup effects
                 $this->applyCharacterSetupEffects($playerId, $characterCard['card_type_arg']);
@@ -108,8 +112,9 @@ class CharacterDeckManager
         $characterCard = $this->characterDeck->pickCard(self::LOCATION_DECK, $playerId);
         
         if ($characterCard) {
-            // Update player table with new character card reference
-            $this->game->DbQuery("UPDATE player SET player_character_card_id = {$characterCard['id']} WHERE player_id = $playerId");
+            $player = $this->playerDBManager->createObjectFromDB($playerId);
+            $player->characterCardId = $characterCard['id'];
+            $this->playerDBManager->saveObjectToDB($player);
             
             // Apply character setup effects
             $this->applyCharacterSetupEffects($playerId, $characterCard['card_type_arg']);
@@ -227,27 +232,28 @@ class CharacterDeckManager
     {
         $ability = $this->getCharacterAbility($characterType);
         
-        // Reset player stats first (in case of replacement)
-        $this->game->DbQuery("UPDATE player SET 
-            player_max_actions = 5, 
-            player_actions_remaining = 5, 
-            player_battle_strength = 0 
-            WHERE player_id = $playerId");
+        $player = $this->playerDBManager->createObjectFromDB($playerId);
+        $player->maxActions = 5;
+        $player->actionsRemaining = 5;
+        $player->battleStrength = 0;
         
         switch ($ability) {
             case 'extra_action':
                 // Lydia Lamore gets 6 actions instead of 5
-                $this->game->DbQuery("UPDATE player SET player_max_actions = 6, player_actions_remaining = 6 WHERE player_id = $playerId");
+                $player->maxActions = 6;
+                $player->actionsRemaining = 6;
                 break;
                 
             case 'battle_bonus':
                 // Blackbeard starts with +2 battle strength
-                $this->game->DbQuery("UPDATE player SET player_battle_strength = 2 WHERE player_id = $playerId");
+                $player->battleStrength = 2;
                 break;
                 
             // Other character effects are applied dynamically during gameplay
             // (fire_resistance, movement_bonus, etc.)
         }
+        
+        $this->playerDBManager->saveObjectToDB($player);
     }
 
     /**
@@ -290,8 +296,9 @@ class CharacterDeckManager
             // Move character to discard pile
             $this->characterDeck->moveCard($characterCard['id'], self::LOCATION_DISCARD, 0);
             
-            // Clear player reference
-            $this->game->DbQuery("UPDATE player SET player_character_card_id = NULL WHERE player_id = $playerId");
+            $player = $this->playerDBManager->createObjectFromDB($playerId);
+            $player->characterCardId = null;
+            $this->playerDBManager->saveObjectToDB($player);
             
             // Notify about character death
             $characterName = $this->getCharacterName($characterCard['card_type_arg']);

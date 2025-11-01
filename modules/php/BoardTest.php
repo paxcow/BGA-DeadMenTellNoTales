@@ -16,12 +16,7 @@ class BoardTest
     {
         $this->mockGame = new MockGame();
         
-        // Create mock managers for testing
-        $mockPirateManager = $this->createMockPirateManager();
-        $mockTokenManager = $this->createMockTokenManager();
-        $mockItemManager = $this->createMockItemManager();
-        
-        $this->boardManager = new BoardManager($this->mockGame, $mockPirateManager, $mockTokenManager, $mockItemManager);
+        $this->boardManager = new BoardManager($this->mockGame);
     }
 
     /**
@@ -63,8 +58,9 @@ class BoardTest
             public function getItemsInPositions(array $positions): array {
                 return []; // No items for testing
             }
-            public function destroyItem(int $itemId): void {
+            public function destroyItem(int $itemId): ?int {
                 // Mock - do nothing
+                return null;
             }
         };
     }
@@ -391,19 +387,13 @@ class MockGame extends \Bga\GameFramework\Table
         return [];
     }
 
-    public function DbQuery(string $sql)
-    {
-        // Mock database operations
-        echo "  SQL: " . substr($sql, 0, 50) . "...\n";
-        return null;
-    }
 
     // Override other methods that might be called to prevent errors
-    protected function setupNewGame($players, $options = []) {}
+    protected function setupNewGame($players, $options = []): void {}
     protected function getAllDatas(): array { return []; }
-    protected function getGameProgression(): int { return 0; }
+    public function getGameProgression(): int { return 0; }
     protected function zombieTurn(array $state, int $active_player): void {}
-    protected function upgradeTableDb($from_version): void {}
+    public function upgradeTableDb($from_version): void {}
 }
 
 // Example usage:

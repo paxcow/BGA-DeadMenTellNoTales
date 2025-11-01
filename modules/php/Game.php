@@ -18,6 +18,8 @@ declare(strict_types=1);
 
 namespace Bga\Games\DeadMenPax;
 
+use Bga\Games\DeadMenPax\DB\PlayerDBManager;
+
 class Game extends \Bga\GameFramework\Table
 {
     private static array $CARD_TYPES;
@@ -25,6 +27,7 @@ class Game extends \Bga\GameFramework\Table
     private PirateManager $pirateManager;
     private ItemManager $itemManager;
     private TokenManager $tokenManager;
+    private PlayerDBManager $playerDBManager;
 
     /**
      * Your global variables labels:
@@ -55,10 +58,11 @@ class Game extends \Bga\GameFramework\Table
         ];
 
         // Initialize managers
+        $this->playerDBManager = new PlayerDBManager($this);
         $this->pirateManager = new PirateManager($this);
         $this->itemManager = new ItemManager($this);
         $this->tokenManager = new TokenManager($this);
-        $this->boardManager = new BoardManager($this, $this->pirateManager, $this->tokenManager, $this->itemManager);
+        $this->boardManager = new BoardManager($this);
 
         /* example of notification decorator.
         // automatically complete notification args when needed
@@ -242,10 +246,14 @@ class Game extends \Bga\GameFramework\Table
         $current_player_id = (int) $this->getCurrentPlayerId();
 
         // Get information about players.
-        // NOTE: you can retrieve some extra field you added for "player" table in `dbmodel.sql` if you need it.
-        $result["players"] = $this->getCollectionFromDb(
-            "SELECT `player_id` `id`, `player_score` `score` FROM `player`"
-        );
+        $players = $this->playerDBManager->getAllObjects();
+        $result['players'] = [];
+        foreach ($players as $player) {
+            $result['players'][$player->id] = [
+                'id' => $player->id,
+                'score' => $player->score,
+            ];
+        }
 
         // TODO: Gather all information about current game situation (visible by player $current_player_id).
 
@@ -275,9 +283,6 @@ class Game extends \Bga\GameFramework\Table
         }
 
         // Create players based on generic information.
-        //
-        // NOTE: You can add extra field on player table in the database (see dbmodel.sql) and initialize
-        // additional fields directly here.
         static::DbQuery(
             sprintf(
                 "INSERT INTO player (player_id, player_color, player_canal, player_name, player_avatar) VALUES %s",
@@ -289,19 +294,19 @@ class Game extends \Bga\GameFramework\Table
         $this->reloadPlayersBasicInfos();
 
         // Init global values with their initial values.
-
-        // Dummy content.
         $this->setGameStateInitialValue("my_first_global_variable", 0);
 
-        // Init game statistics.
-        //
-        // NOTE: statistics used in this file must be defined in your `stats.inc.php` file.
+        // Setup the initial game situation here.
+        $this->itemManager->setupItemCards();
+        $itemAssignments = $this->itemManager->dealStartingItemCards();
+        foreach ($itemAssignments as $playerId => $itemId) {
+            $this->pirateManager->assignItem($playerId, $itemId);
+        }
 
-        // Dummy content.
-        // $this->initStat("table", "table_teststat1", 0);
-        // $this->initStat("player", "player_teststat1", 0);
-
-        // TODO: Setup the initial game situation here.
+        // Include token definitions from material.inc.php
+        include __DIR__ . '/material.inc.php';
+        $this->tokenManager->setupTokens($tokens);
+        // Additional setup for board, etc. will go here
 
         // Activate first player once everything has been initialized and ready.
         $this->activeNextPlayer();
@@ -382,39 +387,6 @@ class Game extends \Bga\GameFramework\Table
         ]);
     }
     
-    /**
-     * Handle player movement between tiles
-     */
-    public function actMovePlayer(int $fromTileId, int $toTileId): void
-    {
-        $playerId = (int)$this->getActivePlayerId();
-        
-        $fromTile = $this->boardManager->getTileById($fromTileId);
-        $toTile = $this->boardManager->getTileById($toTileId);
-        
-        if (!$fromTile || !$toTile) {
-            throw new \BgaUserException("Invalid tile");
-        }
-        
-        // Check if movement is valid
-        if (!$this->boardManager->canMoveBetween($fromTile, $toTile)) {
-            throw new \BgaUserException("Cannot move to that tile - no connection");
-        }
-        
-        // Update player position in database
-        $this->DbQuery("UPDATE player SET player_tile_id = $toTileId WHERE player_id = $playerId");
-        
-        // Notify movement
-        $this->notify->all("playerMoved", clienttranslate('${player_name} moves to a new room'), [
-            "player_id" => $playerId,
-            "player_name" => $this->getActivePlayerName(),
-            "from_tile_id" => $fromTileId,
-            "to_tile_id" => $toTileId
-        ]);
-        
-        // Check for fire damage or other tile effects
-        $this->handleTileEffects($playerId, $toTile);
-    }
     
     /**
      * Handle fire fighting action
@@ -436,8 +408,7 @@ class Game extends \Bga\GameFramework\Table
         $oldLevel = $tile->getFireLevel();
         $tile->decreaseFireLevel(1);
         
-        // Update database
-        $this->DbQuery("UPDATE room_tile SET fire_level = {$tile->getFireLevel()} WHERE tile_id = $tileId");
+        $this->boardManager->saveToDatabase($tile);
         
         // Notify fire level change
         $this->notify->all("fireLevelChanged", clienttranslate('Fire level in room decreased'), [
@@ -455,22 +426,45 @@ class Game extends \Bga\GameFramework\Table
     public function checkForExplosions(): void
     {
         $tilesToCheck = [];
-        
+
         // Find tiles that might explode
         foreach ($this->boardManager->getAllTiles() as $tile) {
             if ($tile->willExplode()) {
                 $tilesToCheck[] = $tile;
             }
         }
-        
+
         foreach ($tilesToCheck as $tile) {
-            $explodedTiles = $this->boardManager->handleChainExplosions($tile);
-            
+            $explosionResult = $this->boardManager->handleChainExplosions($tile);
+            $this->stHandleExplosion($explosionResult);
+
             // Check if ship is critically damaged
             if ($this->boardManager->isCriticallyDamaged()) {
                 $this->notify->all("shipDestroyed", clienttranslate('The ship is critically damaged!'), []);
                 $this->gamestate->nextState("gameEnd");
                 return;
+            }
+        }
+    }
+
+    /**
+     * Handle the results of an explosion, mediating between managers
+     */
+    public function stHandleExplosion(array $explosionResult): void
+    {
+        foreach ($explosionResult['exploded_tiles'] as $tileInfo) {
+            // Get affected pirates and tokens
+            $piratesInTile = $this->pirateManager->getPiratesAt($tileInfo['x'], $tileInfo['y']);
+            $tokensInTile = $this->tokenManager->getTokensInRoom($tileInfo['x'], $tileInfo['y']);
+
+            // Tell PirateManager to handle its part
+            foreach ($piratesInTile as $playerId) {
+                $this->pirateManager->handleExplosionDamage($playerId, $tileInfo['type']);
+            }
+
+            // Tell TokenManager to handle its part
+            foreach ($tokensInTile as $token) {
+                $this->tokenManager->destroyToken($token['token_id']);
             }
         }
     }
@@ -554,7 +548,9 @@ class Game extends \Bga\GameFramework\Table
      */
     private function increaseFatigue(int $playerId, int $amount): void
     {
-        $this->DbQuery("UPDATE player SET player_fatigue = player_fatigue + $amount WHERE player_id = $playerId");
+        $player = $this->playerDBManager->createObjectFromDB($playerId);
+        $player->fatigue += $amount;
+        $this->playerDBManager->saveObjectToDB($player);
         
         $this->notify->all("fatigueChanged", clienttranslate('${player_name}\'s fatigue increases'), [
             "player_id" => $playerId,

@@ -2,339 +2,252 @@
 
 namespace Bga\Games\deadmenpax;
 
-$this->roomsData = [
-    [
-        "type" => "starting_room",
-        "fireColor" => "yellow",
-        "startFireValue" => null,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null,
-        "posX" => 0,
-        "posY" => 0
+// Room tile door constants (bit flags)
+// These match the RoomTile class constants
+define('DOOR_NORTH', 1);
+define('DOOR_EAST', 2);
+define('DOOR_SOUTH', 4);
+define('DOOR_WEST', 8);
 
+// Starting room tiles (4 total) - placed immediately on board during setup
+$this->startingRooms = [
+    [
+        "tile_type" => "starting_room",
+        "color" => "yellow",
+        "pips" => 0,  // fire starting value
+        "doors" => 15,  // All doors: NORTH + EAST + SOUTH + WEST = 1+2+4+8 = 15
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "x" => 0,
+        "y" => 0,
+        "is_starting_tile" => true
     ],
     [
-        "type" => "starting_room",
-        "fireColor" => "red",
-        "startFireValue" => null,
-        "doors" => [
-            "north" => true,
-            "south" => false,
-            "east" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null,
-        "posX" => -1,
-        "posY" => 0
+        "tile_type" => "starting_room",
+        "color" => "red",
+        "pips" => 0,
+        "doors" => 11,  // NORTH + EAST + WEST = 1+2+8 = 11 (no south)
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "x" => -1,
+        "y" => 0,
+        "is_starting_tile" => true
     ],
     [
-        "type" => "starting_room",
-        "fireColor" => "yellow",
-        "startFireValue" => null,
-        "doors" => [
-            "north" => true,
-            "south" => false,
-            "east" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null,
-        "posX" => 0,
-        "posY" => 1
+        "tile_type" => "starting_room", 
+        "color" => "yellow",
+        "pips" => 0,
+        "doors" => 11,  // NORTH + EAST + WEST = 1+2+8 = 11 (no south)
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "x" => 0,
+        "y" => 1,
+        "is_starting_tile" => true
     ],
     [
-        "type" => "starting_room",
-        "fireColor" => "red",
-        "startFireValue" => null,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null,
-        "posX" => 1,
-        "posY" => 0
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 3,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 5
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 4,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 4,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 2,
-        "doors" => [
-            "north" => false,
-            "east" => false,
-            "south" => true,
-            "west" => false
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 4
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 4,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => false
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 1,
-        "doors" => [
-            "north" => false,
-            "east" => false,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 3
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 2,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => false
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 3,
-        "doors" => [
-            "north" => false,
-            "east" => false,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 5
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 1,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 3
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 1,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 2,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 4
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 3,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => false,
-            "west" => false
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 0,
-        "doors" => [
-            "north" => true,
-            "east" => false,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 2
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 3,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 4,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => true,
-            "west" => false
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 4,
-        "doors" => [
-            "north" => true,
-            "east" => true,
-            "south" => false,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 2,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => false,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "red",
-        "startFireValue" => 0,
-        "doors" => [
-            "north" => true,
-            "east" => false,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => "south",
-        "kegThreshold" => 2
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 2,
-        "doors" => [
-            "north" => true,
-            "east" => false,
-            "south" => true,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
-    ],
-    [
-        "type" => "room",
-        "fireColor" => "yellow",
-        "startFireValue" => 3,
-        "doors" => [
-            "north" => false,
-            "east" => true,
-            "south" => false,
-            "west" => true
-        ],
-        "kegDoor" => null,
-        "kegThreshold" => null
+        "tile_type" => "starting_room",
+        "color" => "red", 
+        "pips" => 0,
+        "doors" => 15,  // All doors: NORTH + EAST + SOUTH + WEST = 1+2+4+8 = 15
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "x" => 1,
+        "y" => 0,
+        "is_starting_tile" => true
     ]
-
-
 ];
 
-$this->revengeData = [
+// Regular room tiles (20 total) - created as deck during setup
+$this->roomTiles = [
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 3,
+        "doors" => 15,  // All doors: 1+2+4+8 = 15
+        "has_powder_keg" => true,
+        "keg_threshold" => 5,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 4,
+        "doors" => 15,  // All doors: 1+2+4+8 = 15
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 4,
+        "doors" => 15,  // All doors: 1+2+4+8 = 15
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 2,
+        "doors" => 4,  // Only SOUTH = 4
+        "has_powder_keg" => true,
+        "keg_threshold" => 4,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 4,
+        "doors" => 6,  // EAST + SOUTH = 2+4 = 6
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 1,
+        "doors" => 12,  // SOUTH + WEST = 4+8 = 12
+        "has_powder_keg" => true,
+        "keg_threshold" => 3,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 2,
+        "doors" => 6,  // EAST + SOUTH = 2+4 = 6
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 3,
+        "doors" => 12,  // SOUTH + WEST = 4+8 = 12
+        "has_powder_keg" => true,
+        "keg_threshold" => 5,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 1,
+        "doors" => 14,  // EAST + SOUTH + WEST = 2+4+8 = 14
+        "has_powder_keg" => true,
+        "keg_threshold" => 3,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 1,
+        "doors" => 14,  // EAST + SOUTH + WEST = 2+4+8 = 14
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 2,
+        "doors" => 14,  // EAST + SOUTH + WEST = 2+4+8 = 14
+        "has_powder_keg" => true,
+        "keg_threshold" => 4,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 3,
+        "doors" => 2,  // Only EAST = 2
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 0,
+        "doors" => 13,  // NORTH + SOUTH + WEST = 1+4+8 = 13
+        "has_powder_keg" => true,
+        "keg_threshold" => 2,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 3,
+        "doors" => 14,  // EAST + SOUTH + WEST = 2+4+8 = 14
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 4,
+        "doors" => 7,  // NORTH + EAST + SOUTH = 1+2+4 = 7
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 4,
+        "doors" => 11,  // NORTH + EAST + WEST = 1+2+8 = 11
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 2,
+        "doors" => 10,  // EAST + WEST = 2+8 = 10
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "red",
+        "pips" => 0,
+        "doors" => 13,  // NORTH + SOUTH + WEST = 1+4+8 = 13
+        "has_powder_keg" => true,
+        "keg_threshold" => 2,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 2,
+        "doors" => 13,  // NORTH + SOUTH + WEST = 1+4+8 = 13
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ],
+    [
+        "tile_type" => "room",
+        "color" => "yellow",
+        "pips" => 3,
+        "doors" => 10,  // EAST + WEST = 2+8 = 10
+        "has_powder_keg" => false,
+        "keg_threshold" => null,
+        "is_starting_tile" => false
+    ]
+];
+
+// Revenge card data
+$this->revengeCards = [
     [
         "color" => "both",
         "threshold" => 0,
         "effect" => "crew"
     ],
-
     [
         "color" => "both",
         "threshold" => 1,
@@ -424,109 +337,78 @@ $this->revengeData = [
         "color" => "yellow",
         "threshold" => 5,
         "effect" => null
-    ],
+    ]
 ];
 
-$this->tokenData = [
+// Token data - standardized properties
+$this->tokens = [
     [
-        "front" => [
-            "type" => "crew",
-            "value" => 3
-        ],
-        "back" => [
-            "type" => "grog",
-            "value" => 4
-        ],
-        "nbr" => 2
+        "front_type" => "crew",
+        "front_value" => 3,
+        "back_type" => "grog",
+        "back_value" => 4,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "crew",
-            "value" => 3,
-        ],
-        "back" => [
-            "face" => "cutlass",
-            "value" => null,
-        ],
-        "nbr" => 1,
+        "front_type" => "crew",
+        "front_value" => 3,
+        "back_type" => "cutlass",
+        "back_value" => null,
+        "quantity" => 1
     ],
     [
-        "front" => [
-            "face" => "crew",
-            "value" => 4,
-        ],
-        "back" => [
-            "face" => "cutlass",
-            "value" => null,
-        ],
-        "nbr" => 2,
+        "front_type" => "crew",
+        "front_value" => 4,
+        "back_type" => "cutlass",
+        "back_value" => null,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "crew",
-            "value" => 4,
-        ],
-        "back" => [
-            "face" => "grog",
-            "value" => 5,
-        ],
-        "nbr" => 1,
+        "front_type" => "crew",
+        "front_value" => 4,
+        "back_type" => "grog",
+        "back_value" => 5,
+        "quantity" => 1
     ],
     [
-        "front" => [
-            "face" => "crew",
-            "value" => 5,
-        ],
-        "back" => [
-            "face" => "cutlass",
-            "value" => null,
-        ],
-        "nbr" => 2,
+        "front_type" => "crew",
+        "front_value" => 5,
+        "back_type" => "cutlass",
+        "back_value" => null,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "guardian",
-            "value" => 6,
-        ],
-        "back" => [
-            "face" => "treasure",
-            "value" => null,
-        ],
-        "nbr" => 2,
+        "front_type" => "guardian",
+        "front_value" => 6,
+        "back_type" => "treasure",
+        "back_value" => null,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "guardian",
-            "value" => 7,
-        ],
-        "back" => [
-            "face" => "treasure",
-            "value" => null,
-        ],
-        "nbr" => 2,
+        "front_type" => "guardian",
+        "front_value" => 7,
+        "back_type" => "treasure",
+        "back_value" => null,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "guardian",
-            "value" => 8,
-        ],
-        "back" => [
-            "face" => "treasure",
-            "value" => null,
-        ],
-        "nbr" => 2,
+        "front_type" => "guardian",
+        "front_value" => 8,
+        "back_type" => "treasure",
+        "back_value" => null,
+        "quantity" => 2
     ],
     [
-        "front" => [
-            "face" => "trap",
-            "value" => "null",
-        ],
-        "nbr" =>  6,
-    ],
-
+        "front_type" => "trap",
+        "front_value" => null,
+        "back_type" => null,
+        "back_value" => null,
+        "quantity" => 6
+    ]
 ];
 
-$this->itemData = [
+// Item card data
+$this->itemCards = [
     [
         "name" => clienttranslate("Blanket"),
         "text" => clienttranslate("May lower a Fire Die by 2 once per turn."),
@@ -549,7 +431,7 @@ $this->itemData = [
     ],
     [
         "name" => clienttranslate("Pistol"),
-        "text" => clienttranslate("Nay attack from an adjacent room for on Action once per turn. No fatigue is lost for a failed attack."),
+        "text" => clienttranslate("May attack from an adjacent room for one Action once per turn. No fatigue is lost for a failed attack."),
         "cost" => 1
     ],
     [
@@ -561,6 +443,5 @@ $this->itemData = [
         "name" => clienttranslate("Sword"),
         "text" => clienttranslate("Add 1 to Strength in Battle."),
         "cost" => 0
-    ],
-
+    ]
 ];

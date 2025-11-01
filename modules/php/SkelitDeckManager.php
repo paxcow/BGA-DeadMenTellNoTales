@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Bga\Games\DeadMenPax;
 
 use Bga\GameFramework\Table;
+use Bga\Games\DeadMenPax\DB\PlayerDBManager;
 
 /**
  * Manages Skelit Revenge cards using BGA DECK component
@@ -13,6 +14,7 @@ class SkelitDeckManager
 {
     private Table $game;
     private $skelitDeck; // BGA Deck component
+    private PlayerDBManager $playerDBManager;
     
     // Card locations
     public const LOCATION_DECK = 'deck';
@@ -31,6 +33,7 @@ class SkelitDeckManager
     {
         $this->game = $game;
         $this->skelitDeck = $this->game->deckFactory->createDeck('skelit_card');
+        $this->playerDBManager = new PlayerDBManager($game);
         
         // Enable auto-reshuffle: when deck is empty, shuffle discard pile back into deck
         $this->skelitDeck->autoreshuffle = true;
@@ -349,9 +352,10 @@ class SkelitDeckManager
         // Implementation would add exhaustion to all pirates
         // This would interact with PirateManager
         
-        $players = $this->game->loadPlayersBasicInfos();
-        foreach ($players as $playerId => $player) {
-            $this->game->DbQuery("UPDATE player SET player_fatigue = player_fatigue + 1 WHERE player_id = $playerId");
+        $players = $this->playerDBManager->getAllObjects();
+        foreach ($players as $player) {
+            $player->fatigue++;
+            $this->playerDBManager->saveObjectToDB($player);
         }
         
         $this->game->notifyAllPlayers('piratesExhausted', 

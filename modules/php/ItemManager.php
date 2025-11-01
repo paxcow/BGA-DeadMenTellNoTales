@@ -6,6 +6,7 @@ namespace Bga\Games\DeadMenPax;
 use Bga\GameFramework\Table;
 use Bga\Games\DeadMenPax\DB\DBManager;
 use Bga\Games\DeadMenPax\DB\Models\ItemCardModel;
+use Bga\Games\DeadMenPax\DB\PlayerDBManager;
 
 /**
  * Manages Item cards with custom swapping logic
@@ -16,25 +17,27 @@ class ItemManager
 {
     private Table $game;
     private DBManager $itemDB;
+    private PlayerDBManager $playerDBManager;
     
     // Card locations
     public const LOCATION_PLAYER = 'player';
     public const LOCATION_TABLE = 'table';
     public const LOCATION_DISCARD = 'discard';
     
-    // Item types (different item abilities)
-    public const ITEM_CUTLASS = 1;        // +2 battle strength
-    public const ITEM_GROG = 2;           // Reduce fatigue
-    public const ITEM_TREASURE_MAP = 3;   // Extra treasure
-    public const ITEM_ROPE = 4;           // Move between rooms without doors
-    public const ITEM_LANTERN = 5;        // See hidden passages
-    public const ITEM_POWDER_KEG = 6;     // Explosive damage
-    public const ITEM_FIRST_AID = 7;      // Heal wounds
+    // Item types (matching material.inc.php)
+    public const ITEM_BLANKET = 1;        // Lower Fire Die by 2 once per turn
+    public const ITEM_BUCKET = 2;         // Lower Fire Die in adjacent room once per turn
+    public const ITEM_COMPASS = 3;        // One free Walk or Run Action per turn
+    public const ITEM_DAGGER = 4;         // One free Eliminate Deckhand Action per turn
+    public const ITEM_PISTOL = 5;         // Attack from adjacent room, no fatigue loss on fail
+    public const ITEM_RUM = 6;            // One free Rest Action per turn
+    public const ITEM_SWORD = 7;          // Add 1 to Strength in Battle
 
     public function __construct(Table $game)
     {
         $this->game = $game;
         $this->itemDB = new DBManager('item_card', ItemCardModel::class, $game);
+        $this->playerDBManager = new PlayerDBManager($game);
     }
 
     /**
@@ -48,6 +51,7 @@ class ItemManager
         // Create all 7 unique item cards using DBManager
         for ($i = 1; $i <= 7; $i++) {
             $card = new ItemCardModel();
+            $card->setCardId($i);
             $card->setCardType('item');
             $card->setCardTypeArg($i);
             $card->setCardLocation(self::LOCATION_TABLE);
@@ -60,42 +64,43 @@ class ItemManager
     /**
      * Deal starting item cards to all players (one per player)
      */
-    public function dealStartingItemCards(): void
+    public function dealStartingItemCards(): array
     {
         $players = $this->game->loadPlayersBasicInfos();
-        $playerCount = count($players);
-        
-        // Get random item cards for each player
-        $availableItems = $this->game->getCollectionFromDb(
-            "SELECT card_id FROM item_card WHERE card_location = '" . self::LOCATION_TABLE . "' ORDER BY RAND() LIMIT $playerCount"
-        );
-        
+        $assignments = [];
+
+        // Get available items from table using DBManager
+        $allItems = $this->itemDB->getAllObjects();
+        $availableItems = array_filter($allItems, function ($item) {
+            return $item->getCardLocation() === self::LOCATION_TABLE;
+        });
+        $availableItems = array_values($availableItems); // Reindex array
+        shuffle($availableItems);
+
         $itemIndex = 0;
         foreach ($players as $playerId => $player) {
-            $itemCards = array_keys($availableItems);
-            
-            if (isset($itemCards[$itemIndex])) {
-                $cardId = $itemCards[$itemIndex];
-                
-                // Move item to player
-                $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_PLAYER . "', card_location_arg = $playerId WHERE card_id = $cardId");
-                
-                // Update player table with item card reference
-                $this->game->DbQuery("UPDATE player SET player_item_card_id = $cardId WHERE player_id = $playerId");
-                
+            if (isset($availableItems[$itemIndex])) {
+                $itemCard = $availableItems[$itemIndex];
+
+                // Move item to player using DBManager
+                $itemCard->setCardLocation(self::LOCATION_PLAYER);
+                $itemCard->setCardLocationArg($playerId);
+                $this->itemDB->saveObjectToDB($itemCard);
+
+                // Prepare assignment for the Game mediator
+                $assignments[$playerId] = $itemCard->getCardId();
+
                 // Notify player about their item
-                $itemCard = $this->getItemCard($cardId);
-                if ($itemCard) {
-                    $this->game->notifyPlayer($playerId, 'newItemCard', '', [
-                        'card' => $itemCard,
-                        'item_name' => $this->getItemName($itemCard['card_type_arg']),
-                        'item_ability' => $this->getItemAbility($itemCard['card_type_arg'])
-                    ]);
-                }
-                
+                $this->game->notifyPlayer($playerId, 'newItemCard', '', [
+                    'card' => $itemCard->toArray(),
+                    'item_name' => $this->getItemName($itemCard->getCardTypeArg()),
+                    'item_ability' => $this->getItemAbility($itemCard->getCardTypeArg())
+                ]);
+
                 $itemIndex++;
             }
         }
+        return $assignments;
     }
 
     /**
@@ -103,9 +108,13 @@ class ItemManager
      */
     public function getPlayerItemCard(int $playerId): ?array
     {
-        return $this->game->getObjectFromDB(
-            "SELECT * FROM item_card WHERE card_location = '" . self::LOCATION_PLAYER . "' AND card_location_arg = $playerId"
-        );
+        $allItems = $this->itemDB->getAllObjects();
+        foreach ($allItems as $item) {
+            if ($item->getCardLocation() === self::LOCATION_PLAYER && $item->getCardLocationArg() === $playerId) {
+                return $item->toArray();
+            }
+        }
+        return null;
     }
 
     /**
@@ -113,9 +122,14 @@ class ItemManager
      */
     public function getAvailableItemsOnTable(): array
     {
-        return $this->game->getCollectionFromDb(
-            "SELECT * FROM item_card WHERE card_location = '" . self::LOCATION_TABLE . "'"
-        );
+        $allItems = $this->itemDB->getAllObjects();
+        $tableItems = [];
+        foreach ($allItems as $item) {
+            if ($item->getCardLocation() === self::LOCATION_TABLE) {
+                $tableItems[] = $item->toArray();
+            }
+        }
+        return $tableItems;
     }
 
     /**
@@ -123,9 +137,8 @@ class ItemManager
      */
     public function getItemCard(int $cardId): ?array
     {
-        return $this->game->getObjectFromDB(
-            "SELECT * FROM item_card WHERE card_id = $cardId"
-        );
+        $item = $this->itemDB->createObjectFromDB($cardId);
+        return $item ? $item->toArray() : null;
     }
 
     /**
@@ -134,20 +147,20 @@ class ItemManager
     public function getItemName(int $typeArg): string
     {
         switch ($typeArg) {
-            case self::ITEM_CUTLASS:
-                return 'Cutlass';
-            case self::ITEM_GROG:
-                return 'Grog';
-            case self::ITEM_TREASURE_MAP:
-                return 'Treasure Map';
-            case self::ITEM_ROPE:
-                return 'Rope';
-            case self::ITEM_LANTERN:
-                return 'Lantern';
-            case self::ITEM_POWDER_KEG:
-                return 'Powder Keg';
-            case self::ITEM_FIRST_AID:
-                return 'First Aid Kit';
+            case self::ITEM_BLANKET:
+                return 'Blanket';
+            case self::ITEM_BUCKET:
+                return 'Bucket';
+            case self::ITEM_COMPASS:
+                return 'Compass';
+            case self::ITEM_DAGGER:
+                return 'Dagger';
+            case self::ITEM_PISTOL:
+                return 'Pistol';
+            case self::ITEM_RUM:
+                return 'Rum';
+            case self::ITEM_SWORD:
+                return 'Sword';
             default:
                 return 'Unknown Item';
         }
@@ -159,20 +172,20 @@ class ItemManager
     public function getItemAbility(int $typeArg): string
     {
         switch ($typeArg) {
-            case self::ITEM_CUTLASS:
-                return 'cutlass'; // +2 battle strength
-            case self::ITEM_GROG:
-                return 'grog'; // Reduce fatigue
-            case self::ITEM_TREASURE_MAP:
-                return 'treasure_map'; // Extra treasure
-            case self::ITEM_ROPE:
-                return 'rope'; // Move between rooms without doors
-            case self::ITEM_LANTERN:
-                return 'lantern'; // See hidden passages
-            case self::ITEM_POWDER_KEG:
-                return 'powder_keg'; // Explosive damage
-            case self::ITEM_FIRST_AID:
-                return 'first_aid'; // Heal wounds
+            case self::ITEM_BLANKET:
+                return 'blanket'; // Lower Fire Die by 2 once per turn
+            case self::ITEM_BUCKET:
+                return 'bucket'; // Lower Fire Die in adjacent room once per turn
+            case self::ITEM_COMPASS:
+                return 'compass'; // One free Walk or Run Action per turn
+            case self::ITEM_DAGGER:
+                return 'dagger'; // One free Eliminate Deckhand Action per turn
+            case self::ITEM_PISTOL:
+                return 'pistol'; // Attack from adjacent room, no fatigue loss on fail
+            case self::ITEM_RUM:
+                return 'rum'; // One free Rest Action per turn
+            case self::ITEM_SWORD:
+                return 'sword'; // Add 1 to Strength in Battle
             default:
                 return '';
         }
@@ -184,20 +197,20 @@ class ItemManager
     public function getItemAbilityDescription(int $typeArg): string
     {
         switch ($typeArg) {
-            case self::ITEM_CUTLASS:
-                return '+2 battle strength in combat';
-            case self::ITEM_GROG:
-                return 'Reduces fatigue by 1';
-            case self::ITEM_TREASURE_MAP:
-                return 'Reveals additional treasure locations';
-            case self::ITEM_ROPE:
-                return 'Can move between rooms without doors';
-            case self::ITEM_LANTERN:
-                return 'Reveals hidden passages and secrets';
-            case self::ITEM_POWDER_KEG:
-                return 'Causes explosive damage in combat';
-            case self::ITEM_FIRST_AID:
-                return 'Heals wounds and reduces fatigue';
+            case self::ITEM_BLANKET:
+                return 'May lower a Fire Die by 2 once per turn.';
+            case self::ITEM_BUCKET:
+                return 'May lower a Fire Die in an adjacent room once per turn.';
+            case self::ITEM_COMPASS:
+                return 'One free Walk or Run Action per turn.';
+            case self::ITEM_DAGGER:
+                return 'One free Eliminate Deckhand Action per turn.';
+            case self::ITEM_PISTOL:
+                return 'May attack from an adjacent room for one Action once per turn. No fatigue is lost for a failed attack.';
+            case self::ITEM_RUM:
+                return 'One free Rest Action per turn.';
+            case self::ITEM_SWORD:
+                return 'Add 1 to Strength in Battle.';
             default:
                 return 'Unknown ability';
         }
@@ -206,36 +219,38 @@ class ItemManager
     /**
      * Swap item cards between two players
      */
-    public function swapItemsBetweenPlayers(int $fromPlayerId, int $toPlayerId, int $itemId): bool
+    public function swapItemsBetweenPlayers(int $fromPlayerId, int $toPlayerId, int $itemId): ?array
     {
-        // Validate the item belongs to the from player
-        $itemCard = $this->game->getObjectFromDB(
-            "SELECT * FROM item_card WHERE card_id = $itemId AND card_location = '" . self::LOCATION_PLAYER . "' AND card_location_arg = $fromPlayerId"
-        );
-        
-        if (!$itemCard) {
-            return false;
+        // Validate the item belongs to the from player using DBManager
+        $itemObject = $this->itemDB->createObjectFromDB($itemId);
+
+        if (!$itemObject || $itemObject->getCardLocation() !== self::LOCATION_PLAYER || $itemObject->getCardLocationArg() !== $fromPlayerId) {
+            return null;
         }
-        
+
         // Get the target player's current item (if any)
         $targetItem = $this->getPlayerItemCard($toPlayerId);
-        
-        // Move the item to target player
-        $this->game->DbQuery("UPDATE item_card SET card_location_arg = $toPlayerId WHERE card_id = $itemId");
-        $this->game->DbQuery("UPDATE player SET player_item_card_id = $itemId WHERE player_id = $toPlayerId");
-        
+
+        // Move the item to target player using DBManager
+        $itemObject->setCardLocationArg($toPlayerId);
+        $this->itemDB->saveObjectToDB($itemObject);
+
+        $assignments = [
+            $toPlayerId => $itemId,
+            $fromPlayerId => null,
+        ];
+
         if ($targetItem) {
-            // Move target's item to from player
-            $this->game->DbQuery("UPDATE item_card SET card_location_arg = $fromPlayerId WHERE card_id = {$targetItem['card_id']}");
-            $this->game->DbQuery("UPDATE player SET player_item_card_id = {$targetItem['card_id']} WHERE player_id = $fromPlayerId");
-        } else {
-            // Target player had no item, so from player now has no item
-            $this->game->DbQuery("UPDATE player SET player_item_card_id = NULL WHERE player_id = $fromPlayerId");
+            // Move target's item to from player using DBManager
+            $targetItemObject = $this->itemDB->createObjectFromDB($targetItem['card_id']);
+            $targetItemObject->setCardLocationArg($fromPlayerId);
+            $this->itemDB->saveObjectToDB($targetItemObject);
+            $assignments[$fromPlayerId] = $targetItem['card_id'];
         }
-        
+
         // Notify players about the swap
-        $this->game->notifyAllPlayers('itemsSwapped', 
-            clienttranslate('${from_player_name} and ${to_player_name} swapped items'), 
+        $this->game->notifyAllPlayers('itemsSwapped',
+            clienttranslate('${from_player_name} and ${to_player_name} swapped items'),
             [
                 'from_player_id' => $fromPlayerId,
                 'to_player_id' => $toPlayerId,
@@ -245,41 +260,47 @@ class ItemManager
                 'target_item_id' => $targetItem ? $targetItem['card_id'] : null
             ]
         );
-        
-        return true;
+
+        return $assignments;
     }
 
     /**
      * Swap item between player and table
      */
-    public function swapItemWithTable(int $playerId, int $tableItemId): bool
+    public function swapItemWithTable(int $playerId, int $tableItemId): ?array
     {
-        // Validate the table item
-        $tableItem = $this->game->getObjectFromDB(
-            "SELECT * FROM item_card WHERE card_id = $tableItemId AND card_location = '" . self::LOCATION_TABLE . "'"
-        );
-        
-        if (!$tableItem) {
-            return false;
+        // Validate the table item using DBManager
+        $tableItemObject = $this->itemDB->createObjectFromDB($tableItemId);
+
+        if (!$tableItemObject || $tableItemObject->getCardLocation() !== self::LOCATION_TABLE) {
+            return null;
         }
-        
+
         // Get player's current item
         $playerItem = $this->getPlayerItemCard($playerId);
-        
+        $assignments = [$playerId => $tableItemId];
+
         if (!$playerItem) {
             // Player has no item, just take the table item
-            $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_PLAYER . "', card_location_arg = $playerId WHERE card_id = $tableItemId");
-            $this->game->DbQuery("UPDATE player SET player_item_card_id = $tableItemId WHERE player_id = $playerId");
+            $tableItemObject->setCardLocation(self::LOCATION_PLAYER);
+            $tableItemObject->setCardLocationArg($playerId);
+            $this->itemDB->saveObjectToDB($tableItemObject);
         } else {
-            // Perform the swap
-            $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_PLAYER . "', card_location_arg = $playerId WHERE card_id = $tableItemId");
-            $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_TABLE . "', card_location_arg = 0 WHERE card_id = {$playerItem['card_id']}");
-            $this->game->DbQuery("UPDATE player SET player_item_card_id = $tableItemId WHERE player_id = $playerId");
+            // Perform the swap using DBManager
+            $playerItemObject = $this->itemDB->createObjectFromDB($playerItem['card_id']);
+
+            $tableItemObject->setCardLocation(self::LOCATION_PLAYER);
+            $tableItemObject->setCardLocationArg($playerId);
+            $this->itemDB->saveObjectToDB($tableItemObject);
+
+            $playerItemObject->setCardLocation(self::LOCATION_TABLE);
+            $playerItemObject->setCardLocationArg(0);
+            $this->itemDB->saveObjectToDB($playerItemObject);
         }
-        
+
         // Notify about the swap
-        $this->game->notifyAllPlayers('itemSwappedWithTable', 
-            clienttranslate('${player_name} swapped an item with the table'), 
+        $this->game->notifyAllPlayers('itemSwappedWithTable',
+            clienttranslate('${player_name} swapped an item with the table'),
             [
                 'player_id' => $playerId,
                 'player_name' => $this->game->getPlayerNameById($playerId),
@@ -287,8 +308,8 @@ class ItemManager
                 'player_item_id' => $playerItem ? $playerItem['card_id'] : null
             ]
         );
-        
-        return true;
+
+        return $assignments;
     }
 
     /**
@@ -323,21 +344,32 @@ class ItemManager
     /**
      * Destroy an item (used by explosion effects)
      */
-    public function destroyItem(int $itemId): void
+    public function destroyItem(int $itemId): ?int
     {
-        // Move item to discard pile
-        $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_DISCARD . "', card_location_arg = 0 WHERE card_id = $itemId");
-        
-        // Remove reference from player if they had this item
-        $this->game->DbQuery("UPDATE player SET player_item_card_id = NULL WHERE player_item_card_id = $itemId");
-        
+        $itemObject = $this->itemDB->createObjectFromDB($itemId);
+        if (!$itemObject) {
+            return null;
+        }
+
+        $originalOwnerId = null;
+        if ($itemObject->getCardLocation() === self::LOCATION_PLAYER) {
+            $originalOwnerId = $itemObject->getCardLocationArg();
+        }
+
+        // Move item to discard pile using DBManager
+        $itemObject->setCardLocation(self::LOCATION_DISCARD);
+        $itemObject->setCardLocationArg(0);
+        $this->itemDB->saveObjectToDB($itemObject);
+
         // Notify about item destruction
-        $this->game->notifyAllPlayers('itemDestroyed', 
-            clienttranslate('An item has been destroyed!'), 
+        $this->game->notifyAllPlayers('itemDestroyed',
+            clienttranslate('An item has been destroyed!'),
             [
                 'item_id' => $itemId
             ]
         );
+
+        return $originalOwnerId;
     }
 
     /**
@@ -369,14 +401,23 @@ class ItemManager
      */
     public function getAllItemsData(): array
     {
+        $allItems = $this->itemDB->getAllObjects();
+        
+        $playerItems = [];
+        $discardedItems = [];
+        
+        foreach ($allItems as $item) {
+            if ($item->getCardLocation() === self::LOCATION_PLAYER) {
+                $playerItems[] = $item->toArray();
+            } elseif ($item->getCardLocation() === self::LOCATION_DISCARD) {
+                $discardedItems[] = $item->toArray();
+            }
+        }
+        
         return [
-            'player_items' => $this->game->getCollectionFromDb(
-                "SELECT * FROM item_card WHERE card_location = '" . self::LOCATION_PLAYER . "'"
-            ),
+            'player_items' => $playerItems,
             'table_items' => $this->getAvailableItemsOnTable(),
-            'discarded_items' => $this->game->getCollectionFromDb(
-                "SELECT * FROM item_card WHERE card_location = '" . self::LOCATION_DISCARD . "'"
-            )
+            'discarded_items' => $discardedItems
         ];
     }
 
@@ -390,15 +431,10 @@ class ItemManager
         }
         
         switch ($ability) {
-            case 'cutlass':
-                // Applied automatically during battle calculations
-                return true;
-                
-            case 'grog':
-                // Reduce player fatigue
-                $this->game->DbQuery("UPDATE player SET player_fatigue = GREATEST(0, player_fatigue - 1) WHERE player_id = $playerId");
+            case 'sword':
+                // Applied automatically during battle calculations (+1 Strength)
                 $this->game->notifyAllPlayers('itemUsed', 
-                    clienttranslate('${player_name} uses Grog to reduce fatigue'), 
+                    clienttranslate('${player_name} uses Sword in battle'), 
                     [
                         'player_id' => $playerId,
                         'player_name' => $this->game->getPlayerNameById($playerId),
@@ -407,11 +443,34 @@ class ItemManager
                 );
                 return true;
                 
-            case 'first_aid':
-                // Heal wounds and reduce fatigue
-                $this->game->DbQuery("UPDATE player SET player_fatigue = GREATEST(0, player_fatigue - 2) WHERE player_id = $playerId");
+            case 'rum':
+                // One free Rest Action per turn - handled during action phase
                 $this->game->notifyAllPlayers('itemUsed', 
-                    clienttranslate('${player_name} uses First Aid Kit to heal wounds'), 
+                    clienttranslate('${player_name} uses Rum for a free Rest action'), 
+                    [
+                        'player_id' => $playerId,
+                        'player_name' => $this->game->getPlayerNameById($playerId),
+                        'ability' => $ability
+                    ]
+                );
+                return true;
+                
+            case 'compass':
+                // One free Walk or Run Action per turn - handled during action phase
+                $this->game->notifyAllPlayers('itemUsed', 
+                    clienttranslate('${player_name} uses Compass for free movement'), 
+                    [
+                        'player_id' => $playerId,
+                        'player_name' => $this->game->getPlayerNameById($playerId),
+                        'ability' => $ability
+                    ]
+                );
+                return true;
+                
+            case 'dagger':
+                // One free Eliminate Deckhand Action per turn - handled during action phase
+                $this->game->notifyAllPlayers('itemUsed', 
+                    clienttranslate('${player_name} uses Dagger to eliminate a deckhand'), 
                     [
                         'player_id' => $playerId,
                         'player_name' => $this->game->getPlayerNameById($playerId),
@@ -421,10 +480,18 @@ class ItemManager
                 return true;
                 
             // Other abilities are applied contextually during gameplay
-            case 'treasure_map':
-            case 'rope':
-            case 'lantern':
-            case 'powder_keg':
+            case 'blanket':  // Lower Fire Die by 2 once per turn
+            case 'bucket':   // Lower Fire Die in adjacent room once per turn  
+            case 'pistol':   // Attack from adjacent room, no fatigue loss on fail
+                $this->game->notifyAllPlayers('itemUsed', 
+                    clienttranslate('${player_name} uses ${item_name}'), 
+                    [
+                        'player_id' => $playerId,
+                        'player_name' => $this->game->getPlayerNameById($playerId),
+                        'ability' => $ability,
+                        'item_name' => $this->getItemName($this->getPlayerItemCard($playerId)['card_type_arg'] ?? 0)
+                    ]
+                );
                 return true;
                 
             default:
@@ -437,11 +504,24 @@ class ItemManager
      */
     public function getItemCounts(): array
     {
-        return [
-            'players' => (int) $this->game->getUniqueValueFromDB("SELECT COUNT(*) FROM item_card WHERE card_location = '" . self::LOCATION_PLAYER . "'"),
-            'table' => (int) $this->game->getUniqueValueFromDB("SELECT COUNT(*) FROM item_card WHERE card_location = '" . self::LOCATION_TABLE . "'"),
-            'discard' => (int) $this->game->getUniqueValueFromDB("SELECT COUNT(*) FROM item_card WHERE card_location = '" . self::LOCATION_DISCARD . "'")
-        ];
+        $allItems = $this->itemDB->getAllObjects();
+        $counts = ['players' => 0, 'table' => 0, 'discard' => 0];
+        
+        foreach ($allItems as $item) {
+            switch ($item->getCardLocation()) {
+                case self::LOCATION_PLAYER:
+                    $counts['players']++;
+                    break;
+                case self::LOCATION_TABLE:
+                    $counts['table']++;
+                    break;
+                case self::LOCATION_DISCARD:
+                    $counts['discard']++;
+                    break;
+            }
+        }
+        
+        return $counts;
     }
 
     /**
@@ -449,11 +529,20 @@ class ItemManager
      */
     public function resetItems(): void
     {
-        // Move all items back to table
-        $this->game->DbQuery("UPDATE item_card SET card_location = '" . self::LOCATION_TABLE . "', card_location_arg = 0");
+        // Move all items back to table using DBManager
+        $allItems = $this->itemDB->getAllObjects();
+        foreach ($allItems as $item) {
+            $item->setCardLocation(self::LOCATION_TABLE);
+            $item->setCardLocationArg(0);
+            $this->itemDB->saveObjectToDB($item);
+        }
         
         // Clear player references
-        $this->game->DbQuery("UPDATE player SET player_item_card_id = NULL");
+        $players = $this->playerDBManager->getAllObjects();
+        foreach ($players as $player) {
+            $player->itemCardId = null;
+            $this->playerDBManager->saveObjectToDB($player);
+        }
         
         $this->game->notifyAllPlayers('itemsReset', 
             clienttranslate('All items have been reset to the table'), []);
@@ -467,12 +556,19 @@ class ItemManager
         $playerItem = $this->getPlayerItemCard($playerId);
         $tableItems = $this->getAvailableItemsOnTable();
         
-        // Get other players' items (for potential trading)
-        $otherPlayerItems = $this->game->getCollectionFromDb(
-            "SELECT i.*, p.player_name FROM item_card i 
-             JOIN player p ON i.card_location_arg = p.player_id 
-             WHERE i.card_location = '" . self::LOCATION_PLAYER . "' AND i.card_location_arg != $playerId"
-        );
+        // Get other players' items using DBManager
+        $allItems = $this->itemDB->getAllObjects();
+        $otherPlayerItems = [];
+        
+        foreach ($allItems as $item) {
+            if ($item->getCardLocation() === self::LOCATION_PLAYER && $item->getCardLocationArg() !== $playerId) {
+                $itemArray = $item->toArray();
+                // Get player name for this item
+                $playerName = $this->game->getPlayerNameById($item->getCardLocationArg());
+                $itemArray['player_name'] = $playerName;
+                $otherPlayerItems[] = $itemArray;
+            }
+        }
         
         return [
             'player_item' => $playerItem,
