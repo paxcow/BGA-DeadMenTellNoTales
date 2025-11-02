@@ -339,7 +339,7 @@ class DBManager
     }
 
     /**
-     * Log SQL query for debugging purposes.
+     * Logs an SQL query for debugging purposes.
      *
      * @param string $sql The SQL query to log.
      */

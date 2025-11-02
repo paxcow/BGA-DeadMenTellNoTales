@@ -29,6 +29,11 @@ class SkelitDeckManager
     public const SKELIT_LOCK_DOORS = 6;
     public const SKELIT_EXHAUSTION = 7;
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -46,7 +51,7 @@ class SkelitDeckManager
     }
 
     /**
-     * Callback method called when skelit deck auto-reshuffles
+     * Callback method called when the skelit deck auto-reshuffles.
      */
     public function onSkelitDeckReshuffle(): void
     {
@@ -55,7 +60,7 @@ class SkelitDeckManager
     }
 
     /**
-     * Setup all 19 Skelit Revenge cards during game initialization
+     * Sets up all 19 Skelit Revenge cards during game initialization.
      */
     public function setupSkelitCards(): void
     {
@@ -135,7 +140,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Draw one Skelit Revenge card during the Skelit phase
+     * Draws one Skelit Revenge card during the Skelit phase.
+     *
+     * @return array|null The drawn card, or null if no card could be drawn.
      */
     public function drawSkelitCard(): ?array
     {
@@ -152,7 +159,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Get the current deck count for UI display
+     * Gets the current deck count for UI display.
+     *
+     * @return int The number of cards in the deck.
      */
     public function getSkelitDeckCount(): int
     {
@@ -160,7 +169,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Get the discard pile count for UI display
+     * Gets the discard pile count for UI display.
+     *
+     * @return int The number of cards in the discard pile.
      */
     public function getSkelitDiscardCount(): int
     {
@@ -168,7 +179,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Get all cards in discard pile (for viewing recent effects)
+     * Gets all cards in the discard pile.
+     *
+     * @return array An array of cards in the discard pile.
      */
     public function getSkelitDiscardPile(): array
     {
@@ -176,7 +189,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Get the last discarded skelit card (most recent effect)
+     * Gets the last discarded skelit card.
+     *
+     * @return array|null The last discarded card, or null if the discard pile is empty.
      */
     public function getLastSkelitCard(): ?array
     {
@@ -201,7 +216,10 @@ class SkelitDeckManager
     }
 
     /**
-     * Get description of skelit effect by type_arg
+     * Gets the description of a skelit effect by `type_arg`.
+     *
+     * @param int $typeArg The `type_arg` of the effect.
+     * @return string The description of the effect.
      */
     public function getSkelitEffectDescription(int $typeArg): string
     {
@@ -226,7 +244,12 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute the skelit revenge effect based on card type
+     * Executes the skelit revenge effect based on card type.
+     *
+     * @param array $skelitCard The skelit card.
+     * @param mixed $boardManager The board manager.
+     * @param mixed $tokenManager The token manager.
+     * @param mixed $pirateManager The pirate manager.
      */
     public function executeSkelitEffect(array $skelitCard, $boardManager, $tokenManager, $pirateManager): void
     {
@@ -273,7 +296,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute fire spread effect - fire spreads to adjacent rooms
+     * Executes the fire spread effect.
+     *
+     * @param mixed $boardManager The board manager.
      */
     private function executeFireSpreadEffect($boardManager): void
     {
@@ -285,7 +310,10 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute skeleton crew effect - skeleton crew appears in random rooms
+     * Executes the skeleton crew effect.
+     *
+     * @param mixed $tokenManager The token manager.
+     * @param mixed $boardManager The board manager.
      */
     private function executeSkeletonCrewEffect($tokenManager, $boardManager): void
     {
@@ -297,7 +325,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute room collapse effect - random room tile collapses
+     * Executes the room collapse effect.
+     *
+     * @param mixed $boardManager The board manager.
      */
     private function executeRoomCollapseEffect($boardManager): void
     {
@@ -309,7 +339,10 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute treasure guard effect - random treasure becomes guarded
+     * Executes the treasure guard effect.
+     *
+     * @param mixed $tokenManager The token manager.
+     * @param mixed $boardManager The board manager.
      */
     private function executeTreasureGuardEffect($tokenManager, $boardManager): void
     {
@@ -321,7 +354,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute powder keg effect - random powder keg explodes
+     * Executes the powder keg effect.
+     *
+     * @param mixed $boardManager The board manager.
      */
     private function executePowderKegEffect($boardManager): void
     {
@@ -333,7 +368,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute lock doors effect - doors in random rooms become locked
+     * Executes the lock doors effect.
+     *
+     * @param mixed $boardManager The board manager.
      */
     private function executeLockDoorsEffect($boardManager): void
     {
@@ -345,7 +382,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Execute exhaustion effect - all pirates gain exhaustion
+     * Executes the exhaustion effect.
+     *
+     * @param mixed $pirateManager The pirate manager.
      */
     private function executeExhaustionEffect($pirateManager): void
     {
@@ -363,7 +402,7 @@ class SkelitDeckManager
     }
 
     /**
-     * Manually shuffle the skelit deck if needed
+     * Manually shuffles the skelit deck if needed.
      */
     public function shuffleSkelitDeck(): void
     {
@@ -374,7 +413,9 @@ class SkelitDeckManager
     }
 
     /**
-     * Get all skelit cards for debugging/admin purposes
+     * Gets all skelit cards for debugging/admin purposes.
+     *
+     * @return array An array of all skelit cards.
      */
     public function getAllSkelitCards(): array
     {
@@ -385,7 +426,7 @@ class SkelitDeckManager
     }
 
     /**
-     * Reset skelit deck - move all cards back to deck and shuffle
+     * Resets the skelit deck.
      */
     public function resetSkelitDeck(): void
     {

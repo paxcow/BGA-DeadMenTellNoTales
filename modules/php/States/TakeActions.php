@@ -10,6 +10,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class TakeActions extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -27,6 +32,12 @@ class TakeActions extends GameState
         );
     }
 
+    /**
+     * Gets the arguments for the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return array
+     */
     public function getArgs(int $activePlayerId): array
     {
         return [
@@ -38,6 +49,12 @@ class TakeActions extends GameState
         ];
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     function onEnteringState(int $activePlayerId): string {
         // Reset action tokens for the turn
         $this->game->resetActionTokens($activePlayerId);
@@ -50,6 +67,14 @@ class TakeActions extends GameState
         return "";
     }
 
+    /**
+     * Performs the walk action.
+     *
+     * @param int $targetX The target x-coordinate.
+     * @param int $targetY The target y-coordinate.
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actWalk(int $targetX, int $targetY, int $activePlayerId): string
     {
@@ -57,6 +82,14 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the run action.
+     *
+     * @param int $targetX The target x-coordinate.
+     * @param int $targetY The target y-coordinate.
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actRun(int $targetX, int $targetY, int $activePlayerId): string
     {
@@ -64,6 +97,12 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the fight fire action.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actFightFire(int $activePlayerId): string
     {
@@ -71,6 +110,14 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the eliminate deckhand action.
+     *
+     * @param int $targetX The target x-coordinate.
+     * @param int $targetY The target y-coordinate.
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actEliminateDeckhand(int $targetX, int $targetY, int $activePlayerId): string
     {
@@ -78,6 +125,13 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the pickup token action.
+     *
+     * @param string $tokenId The ID of the token to pick up.
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actPickupToken(string $tokenId, int $activePlayerId): string
     {
@@ -85,6 +139,12 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the rest action.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actRest(int $activePlayerId): string
     {
@@ -92,6 +152,12 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the increase battle strength action.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actIncreaseBattleStrength(int $activePlayerId): string
     {
@@ -99,6 +165,13 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Performs the swap item action.
+     *
+     * @param int $newItemId The ID of the new item.
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actSwapItem(int $newItemId, int $activePlayerId): string
     {
@@ -106,12 +179,24 @@ class TakeActions extends GameState
         return $this->checkTurnEnd($activePlayerId);
     }
 
+    /**
+     * Ends the player's turn.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[PossibleAction]
     public function actEndTurn(int $activePlayerId): string
     {
         return SkelitsRevenge::class;
     }
 
+    /**
+     * Checks if the turn should end.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     private function checkTurnEnd(int $activePlayerId): string
     {
         // Check if player encounters enemies after action

@@ -36,6 +36,11 @@ class TokenManager
     public const STATE_CUTLASS = 0;
     public const STATE_GROG = 1;
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -43,7 +48,7 @@ class TokenManager
     }
 
     /**
-     * Initialize in-memory storage from database
+     * Initializes in-memory storage from the database.
      */
     public function initFromDatabase(): void
     {
@@ -78,7 +83,9 @@ class TokenManager
     }
 
     /**
-     * Save a token to the database
+     * Saves a token to the database.
+     *
+     * @param array $token The token data.
      */
     private function saveToken(array $token): void
     {
@@ -97,7 +104,12 @@ class TokenManager
     }
 
     /**
-     * Update token location in memory and database
+     * Updates a token's location in memory and the database.
+     *
+     * @param string $tokenId The ID of the token.
+     * @param string $newLocation The new location.
+     * @param mixed $newLocationArg The new location argument.
+     * @param int|null $newState The new state.
      */
     private function updateTokenLocation(string $tokenId, string $newLocation, $newLocationArg, ?int $newState = null): void
     {
@@ -140,7 +152,11 @@ class TokenManager
     }
 
     /**
-     * Place a token in a specific room
+     * Places a token in a specific room.
+     *
+     * @param string $tokenId The ID of the token.
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
      */
     public function placeTokenInRoom(string $tokenId, int $x, int $y): void
     {
@@ -149,7 +165,11 @@ class TokenManager
     }
 
     /**
-     * Get all tokens in a specific room
+     * Gets all tokens in a specific room.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return array An array of tokens.
      */
     public function getTokensInRoom(int $x, int $y): array
     {
@@ -170,7 +190,10 @@ class TokenManager
     }
 
     /**
-     * Get tokens in multiple room positions (for explosion effects)
+     * Gets tokens in multiple room positions.
+     *
+     * @param array $positions The positions to check.
+     * @return array An array of tokens.
      */
     public function getTokensInPositions(array $positions): array
     {
@@ -188,7 +211,11 @@ class TokenManager
     }
 
     /**
-     * Move token to player inventory
+     * Moves a token to a player's inventory.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $tokenId The ID of the token.
+     * @return bool True on success, false on failure.
      */
     public function pickupToken(int $playerId, string $tokenId): bool
     {
@@ -209,7 +236,10 @@ class TokenManager
     }
 
     /**
-     * Get all tokens owned by a player
+     * Gets all tokens owned by a player.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array An array of tokens.
      */
     public function getPlayerTokens(int $playerId): array
     {
@@ -230,7 +260,9 @@ class TokenManager
     }
 
     /**
-     * Move token back to bag
+     * Moves a token back to the bag.
+     *
+     * @param string $tokenId The ID of the token.
      */
     public function moveTokenToBag(string $tokenId): void
     {
@@ -238,7 +270,9 @@ class TokenManager
     }
 
     /**
-     * Destroy/remove token from game
+     * Destroys/removes a token from the game.
+     *
+     * @param string $tokenId The ID of the token.
      */
     public function destroyToken(string $tokenId): void
     {
@@ -246,7 +280,9 @@ class TokenManager
     }
 
     /**
-     * Draw random token from bag
+     * Draws a random token from the bag.
+     *
+     * @return array|null The drawn token, or null if the bag is empty.
      */
     public function drawRandomTokenFromBag(): ?array
     {
@@ -267,7 +303,10 @@ class TokenManager
     }
 
     /**
-     * Flip a double-sided token
+     * Flips a double-sided token.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True on success, false on failure.
      */
     public function flipToken(string $tokenId): bool
     {
@@ -295,7 +334,10 @@ class TokenManager
     }
 
     /**
-     * Check if token is showing treasure side
+     * Checks if a token is showing the treasure side.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True if the token is showing the treasure side, false otherwise.
      */
     public function isTokenShowingTreasure(string $tokenId): bool
     {
@@ -308,7 +350,10 @@ class TokenManager
     }
 
     /**
-     * Check if token is showing guard side
+     * Checks if a token is showing the guard side.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True if the token is showing the guard side, false otherwise.
      */
     public function isTokenShowingGuard(string $tokenId): bool
     {
@@ -321,7 +366,10 @@ class TokenManager
     }
 
     /**
-     * Get treasure tokens owned by player
+     * Gets the number of treasure tokens owned by a player.
+     *
+     * @param int $playerId The ID of the player.
+     * @return int The number of treasure tokens.
      */
     public function getPlayerTreasureCount(int $playerId): int
     {
@@ -338,7 +386,9 @@ class TokenManager
     }
 
     /**
-     * Setup tokens for game start
+     * Sets up tokens for the game start.
+     *
+     * @param array $tokenDefinitions The token definitions.
      */
     public function setupTokens(array $tokenDefinitions): void
     {
@@ -350,7 +400,9 @@ class TokenManager
     }
 
     /**
-     * Create initial tokens and place them in the bag based on material definitions
+     * Creates initial tokens and places them in the bag.
+     *
+     * @param array $materialTokens The token definitions.
      */
     private function createTokensInBag(array $materialTokens): void
     {
@@ -366,7 +418,11 @@ class TokenManager
     }
 
     /**
-     * Generate a unique token ID based on token definition and instance number
+     * Generates a unique token ID.
+     *
+     * @param array $tokenDef The token definition.
+     * @param int $instance The instance number.
+     * @return string The generated token ID.
      */
     private function generateTokenId(array $tokenDef, int $instance): string
     {
@@ -377,7 +433,11 @@ class TokenManager
     }
 
     /**
-     * Place a random token in a room when a new room is revealed
+     * Places a random token in a room when a new room is revealed.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return string|null The ID of the placed token, or null if no token was placed.
      */
     public function placeRandomTokenInRoom(int $x, int $y): ?string
     {
@@ -394,7 +454,14 @@ class TokenManager
     }
 
     /**
-     * Handle skeleton crew movement during Skelit's Revenge
+     * Handles skeleton crew movement.
+     *
+     * @param string $tokenId The ID of the token.
+     * @param int $fromX The starting x-coordinate.
+     * @param int $fromY The starting y-coordinate.
+     * @param int $toX The target x-coordinate.
+     * @param int $toY The target y-coordinate.
+     * @return bool True on success, false on failure.
      */
     public function moveSkeletonCrew(string $tokenId, int $fromX, int $fromY, int $toX, int $toY): bool
     {
@@ -421,7 +488,11 @@ class TokenManager
     }
 
     /**
-     * Get location key for room coordinates
+     * Gets a location key for room coordinates.
+     *
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @return string The location key.
      */
     private function getLocationKey(int $x, int $y): string
     {
@@ -429,7 +500,10 @@ class TokenManager
     }
 
     /**
-     * Parse location key back to coordinates
+     * Parses a location key back to coordinates.
+     *
+     * @param string $locationKey The location key.
+     * @return array The coordinates.
      */
     private function parseLocationKey(string $locationKey): array
     {
@@ -438,7 +512,9 @@ class TokenManager
     }
 
     /**
-     * Get all skeleton crew tokens in play
+     * Gets all skeleton crew tokens in play.
+     *
+     * @return array An array of skeleton crew tokens.
      */
     public function getSkeletonCrewTokens(): array
     {
@@ -463,7 +539,11 @@ class TokenManager
     }
 
     /**
-     * Check if room has any skeleton crew
+     * Checks if a room has any skeleton crew.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return bool True if the room has skeleton crew, false otherwise.
      */
     public function hasSkeletonCrewInRoom(int $x, int $y): bool
     {
@@ -486,7 +566,9 @@ class TokenManager
     }
 
     /**
-     * Get all tokens for client display
+     * Gets all tokens for client display.
+     *
+     * @return array An array of all tokens.
      */
     public function getAllTokensState(): array
     {
@@ -524,10 +606,11 @@ class TokenManager
         return $result;
     }
 
-    // ========== Enhanced Token Workflow Methods ==========
-
     /**
-     * Defeat an enemy token - flip from enemy (state=0) to object (state=1)
+     * Defeats an enemy token.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True on success, false on failure.
      */
     public function defeatEnemy(string $tokenId): bool
     {
@@ -551,7 +634,11 @@ class TokenManager
     }
 
     /**
-     * Spawn a random enemy token in a room (when room is revealed)
+     * Spawns a random enemy token in a room.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return string|null The ID of the spawned token, or null if no token was spawned.
      */
     public function spawnRandomEnemyInRoom(int $x, int $y): ?string
     {
@@ -573,7 +660,10 @@ class TokenManager
     }
 
     /**
-     * Check if token can be picked up (must be object side and in room)
+     * Checks if a token can be picked up.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True if the token can be picked up, false otherwise.
      */
     public function canPickupObject(string $tokenId): bool
     {
@@ -590,7 +680,11 @@ class TokenManager
     }
 
     /**
-     * Get only enemy tokens in a specific room (state = 0)
+     * Gets only enemy tokens in a specific room.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return array An array of enemy tokens.
      */
     public function getEnemyTokensInRoom(int $x, int $y): array
     {
@@ -603,7 +697,11 @@ class TokenManager
     }
 
     /**
-     * Get only object tokens in a specific room (state = 1)
+     * Gets only object tokens in a specific room.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return array An array of object tokens.
      */
     public function getObjectTokensInRoom(int $x, int $y): array
     {
@@ -616,7 +714,10 @@ class TokenManager
     }
 
     /**
-     * Check if token is showing enemy side
+     * Checks if a token is showing the enemy side.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True if the token is an enemy, false otherwise.
      */
     public function isTokenEnemy(string $tokenId): bool
     {
@@ -628,7 +729,10 @@ class TokenManager
     }
 
     /**
-     * Check if token is showing object side
+     * Checks if a token is showing the object side.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return bool True if the token is an object, false otherwise.
      */
     public function isTokenObject(string $tokenId): bool
     {
@@ -640,7 +744,10 @@ class TokenManager
     }
 
     /**
-     * Get token definition from token ID (parse front/back types)
+     * Gets a token definition from a token ID.
+     *
+     * @param string $tokenId The ID of the token.
+     * @return array|null The token definition, or null if not found.
      */
     public function getTokenDefinition(string $tokenId): ?array
     {
@@ -667,7 +774,11 @@ class TokenManager
     }
 
     /**
-     * Enhanced pickup method that checks object state
+     * Enhanced pickup method that checks the object state.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $tokenId The ID of the token.
+     * @return bool True on success, false on failure.
      */
     public function pickupObject(int $playerId, string $tokenId): bool
     {
@@ -680,7 +791,9 @@ class TokenManager
     }
 
     /**
-     * Get count of tokens in bag (for UI display)
+     * Gets the count of tokens in the bag.
+     *
+     * @return int The number of tokens in the bag.
      */
     public function getBagTokenCount(): int
     {
@@ -690,7 +803,11 @@ class TokenManager
     }
 
     /**
-     * Check if room has any enemies (for battle determination)
+     * Checks if a room has any enemies.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return bool True if the room has enemies, false otherwise.
      */
     public function hasEnemiesInRoom(int $x, int $y): bool
     {
@@ -699,7 +816,11 @@ class TokenManager
     }
 
     /**
-     * Check if room has any objects (for pickup opportunities)
+     * Checks if a room has any objects.
+     *
+     * @param int $x The x-coordinate of the room.
+     * @param int $y The y-coordinate of the room.
+     * @return bool True if the room has objects, false otherwise.
      */
     public function hasObjectsInRoom(int $x, int $y): bool
     {

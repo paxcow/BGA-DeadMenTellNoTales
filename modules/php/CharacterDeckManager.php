@@ -32,6 +32,11 @@ class CharacterDeckManager
     public const CHARACTER_MARY_READ = 6;       // Treasure finding
     public const CHARACTER_HENRY_MORGAN = 7;    // Leadership
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -43,7 +48,7 @@ class CharacterDeckManager
     }
 
     /**
-     * Setup all 7 Character cards during game initialization
+     * Sets up all 7 Character cards during game initialization.
      */
     public function setupCharacterCards(): void
     {
@@ -66,7 +71,7 @@ class CharacterDeckManager
     }
 
     /**
-     * Deal starting character cards to all players (one per player)
+     * Deals starting character cards to all players.
      */
     public function dealStartingCharacterCards(): void
     {
@@ -95,7 +100,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Draw replacement character card when a pirate dies
+     * Draws a replacement character card when a pirate dies.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array|null The replacement character card, or null if none are available.
      */
     public function drawReplacementCharacter(int $playerId): ?array
     {
@@ -142,7 +150,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get player's current character card
+     * Gets a player's current character card.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array|null The character card, or null if the player has no character.
      */
     public function getPlayerCharacterCard(int $playerId): ?array
     {
@@ -151,7 +162,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get character name by type_arg
+     * Gets a character name by `type_arg`.
+     *
+     * @param int $typeArg The `type_arg` of the character.
+     * @return string The name of the character.
      */
     public function getCharacterName(int $typeArg): string
     {
@@ -176,7 +190,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get character ability by type_arg
+     * Gets a character ability by `type_arg`.
+     *
+     * @param int $typeArg The `type_arg` of the character.
+     * @return string The ability of the character.
      */
     public function getCharacterAbility(int $typeArg): string
     {
@@ -201,7 +218,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get character ability description
+     * Gets a character ability description.
+     *
+     * @param int $typeArg The `type_arg` of the character.
+     * @return string The ability description of the character.
      */
     public function getCharacterAbilityDescription(int $typeArg): string
     {
@@ -226,7 +246,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Apply character ability effects during setup or replacement
+     * Applies character ability effects during setup or replacement.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $characterType The type of the character.
      */
     public function applyCharacterSetupEffects(int $playerId, int $characterType): void
     {
@@ -257,7 +280,11 @@ class CharacterDeckManager
     }
 
     /**
-     * Check if player has specific character ability
+     * Checks if a player has a specific character ability.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $ability The ability to check for.
+     * @return bool True if the player has the ability, false otherwise.
      */
     public function hasCharacterAbility(int $playerId, string $ability): bool
     {
@@ -272,7 +299,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get player's character ability
+     * Gets a player's character ability.
+     *
+     * @param int $playerId The ID of the player.
+     * @return string The character ability.
      */
     public function getPlayerCharacterAbility(int $playerId): string
     {
@@ -286,7 +316,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Kill player's character (move to discard, prepare for replacement)
+     * Kills a player's character.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $deathReason The reason for the character's death.
      */
     public function killPlayerCharacter(int $playerId, string $deathReason = 'explosion'): void
     {
@@ -315,7 +348,9 @@ class CharacterDeckManager
     }
 
     /**
-     * Get current deck count for UI display
+     * Gets the current deck count for UI display.
+     *
+     * @return int The number of cards in the deck.
      */
     public function getCharacterDeckCount(): int
     {
@@ -323,7 +358,9 @@ class CharacterDeckManager
     }
 
     /**
-     * Get all dead characters (in discard pile)
+     * Gets all dead characters.
+     *
+     * @return array An array of dead characters.
      */
     public function getDeadCharacters(): array
     {
@@ -331,7 +368,9 @@ class CharacterDeckManager
     }
 
     /**
-     * Get all active characters (with players)
+     * Gets all active characters.
+     *
+     * @return array An array of active characters.
      */
     public function getActiveCharacters(): array
     {
@@ -339,7 +378,9 @@ class CharacterDeckManager
     }
 
     /**
-     * Get all character cards for debugging/admin purposes
+     * Gets all character cards for debugging/admin purposes.
+     *
+     * @return array An array of all character cards.
      */
     public function getAllCharacterCards(): array
     {
@@ -351,7 +392,10 @@ class CharacterDeckManager
     }
 
     /**
-     * Get player items data including character info
+     * Gets player items data including character info.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array An array of player character data.
      */
     public function getPlayerCharacterData(int $playerId): array
     {
@@ -375,7 +419,9 @@ class CharacterDeckManager
     }
 
     /**
-     * Check if any replacement characters are available
+     * Checks if any replacement characters are available.
+     *
+     * @return bool True if replacement characters are available, false otherwise.
      */
     public function hasReplacementCharacters(): bool
     {
@@ -383,7 +429,7 @@ class CharacterDeckManager
     }
 
     /**
-     * Reset character deck for game restart (debugging/admin)
+     * Resets the character deck for game restart.
      */
     public function resetCharacterDeck(): void
     {

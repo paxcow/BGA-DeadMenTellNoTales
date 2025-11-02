@@ -7,11 +7,22 @@ use Bga\GameFramework\Table;
 
 class PlayerDBManager extends DBManager
 {
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         parent::__construct('player', PlayerModel::class, $game);
     }
 
+    /**
+     * Gets all pirates in the given positions.
+     *
+     * @param array $positions The positions to check.
+     * @return array A list of pirate IDs.
+     */
     public function getPiratesInPositions(array $positions): array
     {
         if (empty($positions)) {
@@ -37,6 +48,11 @@ class PlayerDBManager extends DBManager
         return $result;
     }
 
+    /**
+     * Gets all alive pirates.
+     *
+     * @return array A list of pirate IDs.
+     */
     public function getAlivePirates(): array
     {
         $result = [];

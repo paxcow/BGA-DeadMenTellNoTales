@@ -18,6 +18,11 @@ class PirateManager
     private array $pirates = [];       // [playerId] => pirate object
     private bool $initialized = false;
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -26,7 +31,7 @@ class PirateManager
     }
 
     /**
-     * Initialize pirate data from database into memory
+     * Initializes pirate data from the database into memory.
      */
     public function initFromDatabase(): void
     {
@@ -44,7 +49,9 @@ class PirateManager
     }
 
     /**
-     * Save a pirate's data to database
+     * Saves a pirate's data to the database.
+     *
+     * @param mixed $pirate The pirate object to save.
      */
     private function savePirate($pirate): void
     {
@@ -55,7 +62,10 @@ class PirateManager
     }
 
     /**
-     * Get pirate's current location
+     * Gets a pirate's current location.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array The pirate's location.
      */
     public function getPirateLocation(int $playerId): array
     {
@@ -73,7 +83,12 @@ class PirateManager
     }
 
     /**
-     * Move pirate to new location
+     * Moves a pirate to a new location.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $toX The target x-coordinate.
+     * @param int $toY The target y-coordinate.
+     * @return bool True on success, false on failure.
      */
     public function movePirate(int $playerId, int $toX, int $toY): bool
     {
@@ -91,7 +106,10 @@ class PirateManager
     }
 
     /**
-     * Get remaining action tokens for player
+     * Gets the remaining action tokens for a player.
+     *
+     * @param int $playerId The ID of the player.
+     * @return int The number of remaining actions.
      */
     public function getRemainingActions(int $playerId): int
     {
@@ -103,7 +121,10 @@ class PirateManager
     }
 
     /**
-     * Spend one action token
+     * Spends one action token.
+     *
+     * @param int $playerId The ID of the player.
+     * @return bool True on success, false on failure.
      */
     public function spendAction(int $playerId): bool
     {
@@ -124,7 +145,9 @@ class PirateManager
     }
 
     /**
-     * Reset actions to maximum at start of turn
+     * Resets actions to the maximum at the start of a turn.
+     *
+     * @param int $playerId The ID of the player.
      */
     public function resetActions(int $playerId): void
     {
@@ -138,7 +161,10 @@ class PirateManager
     }
 
     /**
-     * Get maximum actions for player (5 normally, 6 for Lydia Lamore)
+     * Gets the maximum actions for a player.
+     *
+     * @param int $playerId The ID of the player.
+     * @return int The maximum number of actions.
      */
     public function getMaxActions(int $playerId): int
     {
@@ -150,7 +176,11 @@ class PirateManager
     }
 
     /**
-     * Check if player can perform an action
+     * Checks if a player can perform an action.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $action The action to check.
+     * @return bool True if the action can be performed, false otherwise.
      */
     public function canPerformAction(int $playerId, string $action): bool
     {
@@ -167,7 +197,10 @@ class PirateManager
     }
 
     /**
-     * Get player's fatigue level
+     * Gets a player's fatigue level.
+     *
+     * @param int $playerId The ID of the player.
+     * @return int The fatigue level.
      */
     public function getFatigueLevel(int $playerId): int
     {
@@ -179,7 +212,10 @@ class PirateManager
     }
 
     /**
-     * Adjust player's fatigue level
+     * Adjusts a player's fatigue level.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $change The amount to change the fatigue level by.
      */
     public function adjustFatigue(int $playerId, int $change): void
     {
@@ -206,7 +242,10 @@ class PirateManager
     }
 
     /**
-     * Get player's battle strength
+     * Gets a player's battle strength.
+     *
+     * @param int $playerId The ID of the player.
+     * @return int The battle strength.
      */
     public function getBattleStrength(int $playerId): int
     {
@@ -218,7 +257,10 @@ class PirateManager
     }
 
     /**
-     * Adjust player's battle strength
+     * Adjusts a player's battle strength.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $change The amount to change the battle strength by.
      */
     public function adjustBattleStrength(int $playerId, int $change): void
     {
@@ -240,7 +282,10 @@ class PirateManager
     }
 
     /**
-     * Get all pirates at specific positions
+     * Gets all pirates at specific positions.
+     *
+     * @param array $positions The positions to check.
+     * @return array An array of pirate IDs.
      */
     public function getPiratesInPositions(array $positions): array
     {
@@ -263,7 +308,11 @@ class PirateManager
     }
 
     /**
-     * Get all pirates at a specific position
+     * Gets all pirates at a specific position.
+     *
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @return array An array of pirate IDs.
      */
     public function getPiratesAt(int $x, int $y): array
     {
@@ -271,7 +320,10 @@ class PirateManager
     }
 
     /**
-     * Handle explosion damage to pirate
+     * Handles explosion damage to a pirate.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $explosionType The type of explosion.
      */
     public function handleExplosionDamage(int $playerId, string $explosionType): void
     {
@@ -287,7 +339,10 @@ class PirateManager
     }
 
     /**
-     * Kill a pirate
+     * Kills a pirate.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $cause The cause of death.
      */
     public function killPirate(int $playerId, string $cause = 'unknown'): void
     {
@@ -318,7 +373,10 @@ class PirateManager
     }
 
     /**
-     * Check if pirate is alive
+     * Checks if a pirate is alive.
+     *
+     * @param int $playerId The ID of the player.
+     * @return bool True if the pirate is alive, false otherwise.
      */
     public function isPirateAlive(int $playerId): bool
     {
@@ -330,7 +388,9 @@ class PirateManager
     }
 
     /**
-     * Get all alive pirates
+     * Gets all alive pirates.
+     *
+     * @return array An array of alive pirate IDs.
      */
     public function getAlivePirates(): array
     {
@@ -346,7 +406,10 @@ class PirateManager
     }
 
     /**
-     * Handle fire damage in room
+     * Handles fire damage in a room.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $fireLevel The fire level of the room.
      */
     public function applyFireDamage(int $playerId, int $fireLevel): void
     {
@@ -356,7 +419,10 @@ class PirateManager
     }
 
     /**
-     * Set character-specific maximum actions (for Lydia Lamore)
+     * Sets character-specific maximum actions.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $maxActions The maximum number of actions.
      */
     public function setMaxActions(int $playerId, int $maxActions): void
     {
@@ -370,7 +436,10 @@ class PirateManager
     }
 
     /**
-     * Assign an item to a player
+     * Assigns an item to a player.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int|null $itemId The ID of the item.
      */
     public function assignItem(int $playerId, ?int $itemId): void
     {
@@ -384,7 +453,10 @@ class PirateManager
     }
 
     /**
-     * Get player stats for client
+     * Gets player stats for the client.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array An array of player stats.
      */
     public function getPlayerStats(int $playerId): array
     {

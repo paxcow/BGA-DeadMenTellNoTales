@@ -33,6 +33,11 @@ class ItemManager
     public const ITEM_RUM = 6;            // One free Rest Action per turn
     public const ITEM_SWORD = 7;          // Add 1 to Strength in Battle
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -41,7 +46,7 @@ class ItemManager
     }
 
     /**
-     * Setup all 7 Item cards during game initialization
+     * Sets up all 7 Item cards during game initialization.
      */
     public function setupItemCards(): void
     {
@@ -62,7 +67,9 @@ class ItemManager
     }
 
     /**
-     * Deal starting item cards to all players (one per player)
+     * Deals starting item cards to all players.
+     *
+     * @return array
      */
     public function dealStartingItemCards(): array
     {
@@ -104,7 +111,10 @@ class ItemManager
     }
 
     /**
-     * Get player's current item card
+     * Gets a player's current item card.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array|null The item card, or null if the player has no item.
      */
     public function getPlayerItemCard(int $playerId): ?array
     {
@@ -118,7 +128,9 @@ class ItemManager
     }
 
     /**
-     * Get all items available on the table (face up)
+     * Gets all items available on the table.
+     *
+     * @return array An array of available items.
      */
     public function getAvailableItemsOnTable(): array
     {
@@ -133,7 +145,10 @@ class ItemManager
     }
 
     /**
-     * Get specific item card by ID
+     * Gets a specific item card by ID.
+     *
+     * @param int $cardId The ID of the card.
+     * @return array|null The item card, or null if not found.
      */
     public function getItemCard(int $cardId): ?array
     {
@@ -142,7 +157,10 @@ class ItemManager
     }
 
     /**
-     * Get item name by type_arg
+     * Gets an item name by `type_arg`.
+     *
+     * @param int $typeArg The `type_arg` of the item.
+     * @return string The name of the item.
      */
     public function getItemName(int $typeArg): string
     {
@@ -167,7 +185,10 @@ class ItemManager
     }
 
     /**
-     * Get item ability by type_arg
+     * Gets an item ability by `type_arg`.
+     *
+     * @param int $typeArg The `type_arg` of the item.
+     * @return string The ability of the item.
      */
     public function getItemAbility(int $typeArg): string
     {
@@ -192,7 +213,10 @@ class ItemManager
     }
 
     /**
-     * Get item ability description
+     * Gets an item ability description.
+     *
+     * @param int $typeArg The `type_arg` of the item.
+     * @return string The ability description of the item.
      */
     public function getItemAbilityDescription(int $typeArg): string
     {
@@ -217,7 +241,12 @@ class ItemManager
     }
 
     /**
-     * Swap item cards between two players
+     * Swaps item cards between two players.
+     *
+     * @param int $fromPlayerId The ID of the player giving the item.
+     * @param int $toPlayerId The ID of the player receiving the item.
+     * @param int $itemId The ID of the item to swap.
+     * @return array|null
      */
     public function swapItemsBetweenPlayers(int $fromPlayerId, int $toPlayerId, int $itemId): ?array
     {
@@ -265,7 +294,11 @@ class ItemManager
     }
 
     /**
-     * Swap item between player and table
+     * Swaps an item between a player and the table.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $tableItemId The ID of the item on the table.
+     * @return array|null
      */
     public function swapItemWithTable(int $playerId, int $tableItemId): ?array
     {
@@ -313,7 +346,11 @@ class ItemManager
     }
 
     /**
-     * Check if player has specific item ability
+     * Checks if a player has a specific item ability.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $ability The ability to check for.
+     * @return bool True if the player has the ability, false otherwise.
      */
     public function hasItemAbility(int $playerId, string $ability): bool
     {
@@ -328,7 +365,10 @@ class ItemManager
     }
 
     /**
-     * Get player's item ability
+     * Gets a player's item ability.
+     *
+     * @param int $playerId The ID of the player.
+     * @return string The item ability.
      */
     public function getPlayerItemAbility(int $playerId): string
     {
@@ -342,7 +382,10 @@ class ItemManager
     }
 
     /**
-     * Destroy an item (used by explosion effects)
+     * Destroys an item.
+     *
+     * @param int $itemId The ID of the item to destroy.
+     * @return int|null The ID of the original owner, or null if the item was not owned.
      */
     public function destroyItem(int $itemId): ?int
     {
@@ -373,7 +416,10 @@ class ItemManager
     }
 
     /**
-     * Get all player items data including item info
+     * Gets player items data including item info.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array An array of player item data.
      */
     public function getPlayerItemData(int $playerId): array
     {
@@ -397,7 +443,9 @@ class ItemManager
     }
 
     /**
-     * Get all items for game data display
+     * Gets all items for game data display.
+     *
+     * @return array An array of all items data.
      */
     public function getAllItemsData(): array
     {
@@ -422,7 +470,12 @@ class ItemManager
     }
 
     /**
-     * Apply item effects (called when using items)
+     * Applies item effects.
+     *
+     * @param int $playerId The ID of the player.
+     * @param string $ability The ability to use.
+     * @param array $params Additional parameters.
+     * @return bool True if the ability was used successfully, false otherwise.
      */
     public function useItemAbility(int $playerId, string $ability, array $params = []): bool
     {
@@ -500,7 +553,9 @@ class ItemManager
     }
 
     /**
-     * Get item counts by location
+     * Gets item counts by location.
+     *
+     * @return array An array of item counts.
      */
     public function getItemCounts(): array
     {
@@ -525,7 +580,7 @@ class ItemManager
     }
 
     /**
-     * Reset items for game restart (debugging/admin)
+     * Resets items for game restart.
      */
     public function resetItems(): void
     {
@@ -549,7 +604,10 @@ class ItemManager
     }
 
     /**
-     * Get items that can be swapped (for UI)
+     * Gets items that can be swapped.
+     *
+     * @param int $playerId The ID of the player.
+     * @return array An array of swappable items.
      */
     public function getSwappableItems(int $playerId): array
     {

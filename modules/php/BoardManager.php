@@ -5,6 +5,7 @@ namespace Bga\Games\DeadMenPax;
 
 use Bga\GameFramework\Table;
 use Bga\Games\DeadMenPax\DB\RoomTileDBManager;
+use Bga\Games\DeadMenPax\DB\Models\RoomTileModel;
 
 /**
  * Manages the board state and tile placement for Dead Men Pax
@@ -17,6 +18,11 @@ class BoardManager
     private array $tilesByPosition = []; // [y][x] => RoomTile
     private RoomTileDBManager $roomTileDBManager;
 
+    /**
+     * Constructor.
+     *
+     * @param Table $game The game instance.
+     */
     public function __construct(Table $game)
     {
         $this->game = $game;
@@ -25,7 +31,7 @@ class BoardManager
     }
 
     /**
-     * Load existing tiles from database
+     * Loads existing tiles from the database.
      */
     private function loadFromDatabase(): void
     {
@@ -39,7 +45,13 @@ class BoardManager
     }
 
     /**
-     * Place a tile on the board at specified coordinates with optional orientation
+     * Places a tile on the board at specified coordinates with optional orientation.
+     *
+     * @param RoomTile $tile The tile to place.
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @param int $orientation The orientation of the tile.
+     * @return bool True if the tile was placed successfully, false otherwise.
      */
     public function placeTile(RoomTile $tile, int $x, int $y, int $orientation = RoomTile::ORIENTATION_0): bool
     {
@@ -58,9 +70,9 @@ class BoardManager
             }
         }
 
-        // Place the tile
+// Place the tile
         $tile->setPosition($x, $y);
-        $this->tiles[$tile->getTileId()] = $tile;
+        $this->tiles[$tile->getId()] = $tile;
         $this->tilesByPosition[$y][$x] = $tile;
 
         // Update database
@@ -70,7 +82,12 @@ class BoardManager
     }
 
     /**
-     * Check if the tile has valid door connections at the given position
+     * Checks if the tile has valid door connections at the given position.
+     *
+     * @param RoomTile $tile The tile to check.
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @return bool True if the connections are valid, false otherwise.
      */
     private function hasValidConnections(RoomTile $tile, int $x, int $y): bool
     {
@@ -101,7 +118,10 @@ class BoardManager
     }
 
     /**
-     * Get opposite direction
+     * Gets the opposite direction.
+     *
+     * @param int $direction The direction.
+     * @return int The opposite direction.
      */
     private function getOppositeDirection(int $direction): int
     {
@@ -115,7 +135,11 @@ class BoardManager
     }
 
     /**
-     * Get tile at specific coordinates
+     * Gets the tile at specific coordinates.
+     *
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @return RoomTile|null The tile at the given coordinates, or null if no tile is present.
      */
     public function getTileAt(int $x, int $y): ?RoomTile
     {
@@ -123,7 +147,10 @@ class BoardManager
     }
 
     /**
-     * Get tile by ID
+     * Gets the tile by ID.
+     *
+     * @param int $tileId The ID of the tile.
+     * @return RoomTile|null The tile with the given ID, or null if no tile is found.
      */
     public function getTileById(int $tileId): ?RoomTile
     {
@@ -131,7 +158,9 @@ class BoardManager
     }
 
     /**
-     * Get all tiles on the board
+     * Gets all tiles on the board.
+     *
+     * @return array An array of all tiles on the board.
      */
     public function getAllTiles(): array
     {
@@ -139,7 +168,10 @@ class BoardManager
     }
 
     /**
-     * Get valid placement positions for a tile (considering all possible orientations)
+     * Gets valid placement positions for a tile.
+     *
+     * @param RoomTile $tile The tile to place.
+     * @return array An array of valid placement positions.
      */
     public function getValidPlacementPositions(RoomTile $tile): array
     {
@@ -186,7 +218,11 @@ class BoardManager
     }
 
     /**
-     * Find path between two tiles using A* algorithm
+     * Finds a path between two tiles using the A* algorithm.
+     *
+     * @param RoomTile $startTile The starting tile.
+     * @param RoomTile $endTile The ending tile.
+     * @return array An array of tiles representing the path, or an empty array if no path is found.
      */
     public function findPath(RoomTile $startTile, RoomTile $endTile): array
     {
@@ -237,7 +273,10 @@ class BoardManager
     }
 
     /**
-     * Get tiles connected to the given tile through doors
+     * Gets tiles connected to the given tile through doors.
+     *
+     * @param RoomTile $tile The tile.
+     * @return array An array of connected tiles.
      */
     public function getConnectedTiles(RoomTile $tile): array
     {
@@ -262,7 +301,11 @@ class BoardManager
     }
 
     /**
-     * Check if two tiles can have movement between them
+     * Checks if two tiles can have movement between them.
+     *
+     * @param RoomTile $fromTile The starting tile.
+     * @param RoomTile $toTile The destination tile.
+     * @return bool True if movement is possible, false otherwise.
      */
     public function canMoveBetween(RoomTile $fromTile, RoomTile $toTile): bool
     {
@@ -271,7 +314,10 @@ class BoardManager
     }
 
     /**
-     * Handle chain explosions starting from a tile
+     * Handles chain explosions starting from a tile.
+     *
+     * @param RoomTile $startTile The tile where the explosion starts.
+     * @return array An array containing the exploded tiles.
      */
     public function handleChainExplosions(RoomTile $startTile): array
     {
@@ -282,11 +328,11 @@ class BoardManager
         while (!empty($toProcess)) {
             $currentTile = array_shift($toProcess);
 
-            if (in_array($currentTile->getTileId(), $processed)) {
+if (in_array($currentTile->getId(), $processed)) {
                 continue;
             }
 
-            $processed[] = $currentTile->getTileId();
+$processed[] = $currentTile->getId();
 
             if ($currentTile->willExplode()) {
                 // Determine explosion type
@@ -305,7 +351,7 @@ class BoardManager
                     'x' => $currentTile->getX(),
                     'y' => $currentTile->getY(),
                     'type' => $explosionType,
-                    'tile_id' => $currentTile->getTileId(),
+'tile_id' => $currentTile->getId(),
                 ];
 
                 // Add fire to adjacent tiles
@@ -314,7 +360,7 @@ class BoardManager
                     $adjacentTile->increaseFireLevel(1);
                     $this->saveToDatabase($adjacentTile); // Save adjacent tile changes
 
-                    if (!in_array($adjacentTile->getTileId(), $processed)) {
+if (!in_array($adjacentTile->getId(), $processed)) {
                         $toProcess[] = $adjacentTile;
                     }
                 }
@@ -324,7 +370,7 @@ class BoardManager
 
                 // Notify explosion
                 $this->game->notifyAllPlayers("explosion", clienttranslate('An explosion occurs in room!'), [
-                    "tile_id" => $currentTile->getTileId(),
+                    "tile_id" => $currentTile->getId(),
                     "x" => $currentTile->getX(),
                     "y" => $currentTile->getY(),
                     "type" => $explosionType,
@@ -337,7 +383,10 @@ class BoardManager
     }
 
     /**
-     * Get tiles adjacent to the given tile (regardless of door connections)
+     * Gets tiles adjacent to the given tile.
+     *
+     * @param RoomTile $tile The tile.
+     * @return array An array of adjacent tiles.
      */
     private function getAdjacentTiles(RoomTile $tile): array
     {
@@ -360,7 +409,10 @@ class BoardManager
     }
 
     /**
-     * Check if ship is critically damaged
+     * Checks if the ship is critically damaged.
+     *
+     * @param int $maxExplosions The maximum number of explosions before the ship is critically damaged.
+     * @return bool True if the ship is critically damaged, false otherwise.
      */
     public function isCriticallyDamaged(int $maxExplosions = 4): bool
     {
@@ -368,7 +420,9 @@ class BoardManager
     }
 
     /**
-     * Get all exploded tiles
+     * Gets all exploded tiles.
+     *
+     * @return array An array of exploded tiles.
      */
     public function getExplodedTiles(): array
     {
@@ -378,7 +432,9 @@ class BoardManager
     }
 
     /**
-     * Get ship bounds
+     * Gets the ship bounds.
+     *
+     * @return array An array containing the min and max x and y coordinates of the ship.
      */
     public function getShipBounds(): array
     {
@@ -399,7 +455,9 @@ class BoardManager
     }
 
     /**
-     * Save tile to database
+     * Saves a tile to the database.
+     *
+     * @param RoomTile $tile The tile to save.
      */
     public function saveToDatabase(RoomTile $tile): void
     {
@@ -407,7 +465,13 @@ class BoardManager
         $this->roomTileDBManager->saveObjectToDB($model);
     }
 
-    // Helper methods for pathfinding
+    /**
+     * Checks if a tile is in an array.
+     *
+     * @param RoomTile $tile The tile to check.
+     * @param array $array The array to check.
+     * @return bool True if the tile is in the array, false otherwise.
+     */
     private function tileInArray(RoomTile $tile, array $array): bool
     {
         foreach ($array as $item) {
@@ -418,6 +482,13 @@ class BoardManager
         return false;
     }
 
+    /**
+     * Gets the tile with the lowest f-score.
+     *
+     * @param array $tiles The array of tiles.
+     * @param array $fScore The array of f-scores.
+     * @return RoomTile The tile with the lowest f-score.
+     */
     private function getLowestFScoreTile(array $tiles, array $fScore): RoomTile
     {
         $lowest = $tiles[0];
@@ -434,6 +505,13 @@ class BoardManager
         return $lowest;
     }
 
+    /**
+     * Reconstructs the path from the `cameFrom` array.
+     *
+     * @param array $cameFrom The `cameFrom` array.
+     * @param RoomTile $current The current tile.
+     * @return array The reconstructed path.
+     */
     private function reconstructPath(array $cameFrom, RoomTile $current): array
     {
         $path = [$current];
@@ -446,6 +524,13 @@ class BoardManager
         return $path;
     }
 
+    /**
+     * Calculates the Manhattan distance between two tiles.
+     *
+     * @param RoomTile $tile1 The first tile.
+     * @param RoomTile $tile2 The second tile.
+     * @return int The Manhattan distance.
+     */
     private function manhattanDistance(RoomTile $tile1, RoomTile $tile2): int
     {
         return abs($tile1->getX() - $tile2->getX()) + abs($tile1->getY() - $tile2->getY());

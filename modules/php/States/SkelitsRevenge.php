@@ -9,6 +9,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class SkelitsRevenge extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -25,6 +30,12 @@ class SkelitsRevenge extends GameState
         );
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     function onEnteringState(int $activePlayerId): string {
         // Draw and resolve Skelit's Revenge card
         $card = $this->game->drawSkelitsRevengeCard();

@@ -39,6 +39,17 @@ class RoomTile
     private bool $isStartingTile;
     private int $orientation;    // Current orientation in degrees
 
+    /**
+     * Constructor.
+     *
+     * @param int $id The ID of the tile.
+     * @param int $doors The doors mask.
+     * @param string $color The color of the tile.
+     * @param int $pips The pips on the tile.
+     * @param bool $hasPowderKeg Whether the tile has a powder keg.
+     * @param bool $hasTrapdoor Whether the tile has a trapdoor.
+     * @param bool $isStartingTile Whether the tile is a starting tile.
+     */
     public function __construct(
         int $id,
         int $doors,
@@ -63,66 +74,180 @@ class RoomTile
         $this->orientation = self::ORIENTATION_0;
     }
 
-    // Getters
+    /**
+     * Gets the tile ID.
+     *
+     * @return int
+     */
     public function getId(): int { return $this->id; }
+    /**
+     * Gets the current doors mask.
+     *
+     * @return int
+     */
     public function getDoors(): int { return $this->doors; }
+    /**
+     * Gets the original doors mask.
+     *
+     * @return int
+     */
     public function getOriginalDoors(): int { return $this->originalDoors; }
+    /**
+     * Gets the color.
+     *
+     * @return string
+     */
     public function getColor(): string { return $this->color; }
+    /**
+     * Gets the pips.
+     *
+     * @return int
+     */
     public function getPips(): int { return $this->pips; }
+    /**
+     * Checks if the tile has a powder keg.
+     *
+     * @return bool
+     */
     public function hasPowderKeg(): bool { return $this->hasPowderKeg; }
+    /**
+     * Checks if the tile has a trapdoor.
+     *
+     * @return bool
+     */
     public function hasTrapdoor(): bool { return $this->hasTrapdoor; }
+    /**
+     * Gets the x-coordinate.
+     *
+     * @return int
+     */
     public function getX(): int { return $this->x; }
+    /**
+     * Gets the y-coordinate.
+     *
+     * @return int
+     */
     public function getY(): int { return $this->y; }
+    /**
+     * Gets the fire level.
+     *
+     * @return int
+     */
     public function getFireLevel(): int { return $this->fireLevel; }
+    /**
+     * Checks if the powder keg has exploded.
+     *
+     * @return bool
+     */
     public function isPowderKegExploded(): bool { return $this->powderKegExploded; }
+    /**
+     * Checks if the tile is a starting tile.
+     *
+     * @return bool
+     */
     public function isStartingTile(): bool { return $this->isStartingTile; }
+    /**
+     * Gets the orientation.
+     *
+     * @return int
+     */
     public function getOrientation(): int { return $this->orientation; }
 
-    // Setters
+    /**
+     * Sets the position.
+     *
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     */
     public function setPosition(int $x, int $y): void {
         $this->x = $x;
         $this->y = $y;
     }
 
+    /**
+     * Sets the fire level.
+     *
+     * @param int $level The fire level.
+     */
     public function setFireLevel(int $level): void {
         $this->fireLevel = max(0, min(6, $level));
     }
 
+    /**
+     * Increases the fire level.
+     *
+     * @param int $amount The amount to increase by.
+     */
     public function increaseFireLevel(int $amount = 1): void {
         $this->setFireLevel($this->fireLevel + $amount);
     }
 
+    /**
+     * Decreases the fire level.
+     *
+     * @param int $amount The amount to decrease by.
+     */
     public function decreaseFireLevel(int $amount = 1): void {
         $this->setFireLevel($this->fireLevel - $amount);
     }
 
+    /**
+     * Explodes the powder keg.
+     */
     public function explodePowderKeg(): void {
         $this->powderKegExploded = true;
     }
 
-    // Door checking methods
+    /**
+     * Checks if the tile has a door in a given direction.
+     *
+     * @param int $direction The direction to check.
+     * @return bool
+     */
     public function hasDoor(int $direction): bool {
         return ($this->doors & $direction) !== 0;
     }
 
+    /**
+     * Checks if the tile has a north door.
+     *
+     * @return bool
+     */
     public function hasNorthDoor(): bool {
         return $this->hasDoor(self::DOOR_NORTH);
     }
 
+    /**
+     * Checks if the tile has an east door.
+     *
+     * @return bool
+     */
     public function hasEastDoor(): bool {
         return $this->hasDoor(self::DOOR_EAST);
     }
 
+    /**
+     * Checks if the tile has a south door.
+     *
+     * @return bool
+     */
     public function hasSouthDoor(): bool {
         return $this->hasDoor(self::DOOR_SOUTH);
     }
 
+    /**
+     * Checks if the tile has a west door.
+     *
+     * @return bool
+     */
     public function hasWestDoor(): bool {
         return $this->hasDoor(self::DOOR_WEST);
     }
 
     /**
-     * Get doors as an array of directions
+     * Gets the doors as an array of directions.
+     *
+     * @return array
      */
     public function getDoorsArray(): array {
         $doors = [];
@@ -134,7 +259,11 @@ class RoomTile
     }
 
     /**
-     * Check if this tile can connect to another tile in a given direction
+     * Checks if this tile can connect to another tile in a given direction.
+     *
+     * @param RoomTile $otherTile The other tile.
+     * @param int $direction The direction to check.
+     * @return bool
      */
     public function canConnectTo(RoomTile $otherTile, int $direction): bool {
         // This tile must have a door in the given direction
@@ -148,7 +277,10 @@ class RoomTile
     }
 
     /**
-     * Get the opposite direction
+     * Gets the opposite direction.
+     *
+     * @param int $direction The direction.
+     * @return int
      */
     private function getOppositeDirection(int $direction): int {
         switch ($direction) {
@@ -161,14 +293,18 @@ class RoomTile
     }
 
     /**
-     * Check if the tile will explode (fire level 6 or powder keg explosion)
+     * Checks if the tile will explode.
+     *
+     * @return bool
      */
     public function willExplode(): bool {
         return $this->fireLevel >= 6 || ($this->hasPowderKeg && !$this->powderKegExploded && $this->fireLevel > 0);
     }
 
     /**
-     * Set the tile orientation and update door positions
+     * Sets the tile orientation and updates door positions.
+     *
+     * @param int $orientation The new orientation.
      */
     public function setOrientation(int $orientation): void {
         // Normalize orientation to 0, 90, 180, or 270
@@ -180,7 +316,7 @@ class RoomTile
     }
 
     /**
-     * Rotate the tile clockwise by 90 degrees
+     * Rotates the tile clockwise by 90 degrees.
      */
     public function rotateClockwise(): void {
         $newOrientation = ($this->orientation + 90) % 360;
@@ -188,7 +324,7 @@ class RoomTile
     }
 
     /**
-     * Rotate the tile counter-clockwise by 90 degrees
+     * Rotates the tile counter-clockwise by 90 degrees.
      */
     public function rotateCounterClockwise(): void {
         $newOrientation = ($this->orientation - 90) % 360;
@@ -197,14 +333,18 @@ class RoomTile
     }
 
     /**
-     * Reset tile to original orientation
+     * Resets the tile to its original orientation.
      */
     public function resetOrientation(): void {
         $this->setOrientation(self::ORIENTATION_0);
     }
 
     /**
-     * Rotate doors based on orientation
+     * Rotates doors based on orientation.
+     *
+     * @param int $doors The doors mask.
+     * @param int $orientation The orientation.
+     * @return int
      */
     private function rotateDoorsToOrientation(int $doors, int $orientation): int {
         switch ($orientation) {
@@ -226,7 +366,10 @@ class RoomTile
     }
 
     /**
-     * Rotate doors 90 degrees clockwise
+     * Rotates doors 90 degrees clockwise.
+     *
+     * @param int $doors The doors mask.
+     * @return int
      */
     private function rotateDoorsClockwise(int $doors): int {
         $rotatedDoors = 0;
@@ -255,7 +398,10 @@ class RoomTile
     }
 
     /**
-     * Rotate doors 90 degrees counter-clockwise
+     * Rotates doors 90 degrees counter-clockwise.
+     *
+     * @param int $doors The doors mask.
+     * @return int
      */
     private function rotateDoorsCounterClockwise(int $doors): int {
         $rotatedDoors = 0;
@@ -284,7 +430,9 @@ class RoomTile
     }
 
     /**
-     * Get all possible orientations for this tile
+     * Gets all possible orientations for this tile.
+     *
+     * @return array
      */
     public function getPossibleOrientations(): array {
         return [
@@ -296,7 +444,10 @@ class RoomTile
     }
 
     /**
-     * Create a copy of this tile with a specific orientation
+     * Creates a copy of this tile with a specific orientation.
+     *
+     * @param int $orientation The new orientation.
+     * @return RoomTile
      */
     public function withOrientation(int $orientation): RoomTile {
         $copy = clone $this;
@@ -305,14 +456,19 @@ class RoomTile
     }
 
     /**
-     * Get door positions for a specific orientation without changing the tile
+     * Gets door positions for a specific orientation without changing the tile.
+     *
+     * @param int $orientation The orientation.
+     * @return int
      */
     public function getDoorsForOrientation(int $orientation): int {
         return $this->rotateDoorsToOrientation($this->originalDoors, $orientation);
     }
 
     /**
-     * Get tile data as array for database storage
+     * Gets the tile data as an array for database storage.
+     *
+     * @return array
      */
     public function toArray(): array {
         return [
@@ -333,7 +489,10 @@ class RoomTile
     }
 
     /**
-     * Create RoomTile from database array
+     * Creates a RoomTile from a database array.
+     *
+     * @param array $data The data from the database.
+     * @return RoomTile
      */
     public static function fromArray(array $data): RoomTile {
         $tile = new RoomTile(

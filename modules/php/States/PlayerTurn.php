@@ -10,6 +10,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class PlayerTurn extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -26,6 +31,12 @@ class PlayerTurn extends GameState
         );
     }
 
+    /**
+     * Gets the arguments for the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return array
+     */
     public function getArgs(int $activePlayerId): array
     {
         return [
@@ -35,6 +46,12 @@ class PlayerTurn extends GameState
         ];
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     function onEnteringState(int $activePlayerId): string {
         // Check if game should end
         if ($this->game->checkGameEnd()) {

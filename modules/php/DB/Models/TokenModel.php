@@ -25,86 +25,162 @@ class TokenModel
     #[dbColumn('token_state')]
     private int $tokenState = 0;
 
-    // Getters
+    /**
+     * Gets the token ID.
+     *
+     * @return string
+     */
     public function getTokenId(): string
     {
         return $this->tokenId;
     }
 
+    /**
+     * Gets the token type.
+     *
+     * @return string
+     */
     public function getTokenType(): string
     {
         return $this->tokenType;
     }
 
+    /**
+     * Gets the token location.
+     *
+     * @return string
+     */
     public function getTokenLocation(): string
     {
         return $this->tokenLocation;
     }
 
+    /**
+     * Gets the token location argument.
+     *
+     * @return int
+     */
     public function getTokenLocationArg(): int
     {
         return $this->tokenLocationArg;
     }
 
+    /**
+     * Gets the token state.
+     *
+     * @return int
+     */
     public function getTokenState(): int
     {
         return $this->tokenState;
     }
 
-    // Setters
+    /**
+     * Sets the token ID.
+     *
+     * @param string $tokenId
+     */
     public function setTokenId(string $tokenId): void
     {
         $this->tokenId = $tokenId;
     }
 
+    /**
+     * Sets the token type.
+     *
+     * @param string $tokenType
+     */
     public function setTokenType(string $tokenType): void
     {
         $this->tokenType = $tokenType;
     }
 
+    /**
+     * Sets the token location.
+     *
+     * @param string $tokenLocation
+     */
     public function setTokenLocation(string $tokenLocation): void
     {
         $this->tokenLocation = $tokenLocation;
     }
 
+    /**
+     * Sets the token location argument.
+     *
+     * @param int $tokenLocationArg
+     */
     public function setTokenLocationArg(int $tokenLocationArg): void
     {
         $this->tokenLocationArg = $tokenLocationArg;
     }
 
+    /**
+     * Sets the token state.
+     *
+     * @param int $tokenState
+     */
     public function setTokenState(int $tokenState): void
     {
         $this->tokenState = $tokenState;
     }
 
-    // Business logic methods
+    /**
+     * Checks if the token is in a room.
+     *
+     * @return bool
+     */
     public function isInRoom(): bool
     {
         return str_contains($this->tokenLocation, 'room_');
     }
 
+    /**
+     * Checks if the token is on the board.
+     *
+     * @return bool
+     */
     public function isOnBoard(): bool
     {
         return $this->tokenLocation === 'board';
     }
 
+    /**
+     * Checks if the token is in the supply.
+     *
+     * @return bool
+     */
     public function isInSupply(): bool
     {
         return $this->tokenLocation === 'supply';
     }
 
+    /**
+     * Moves the token to a room.
+     *
+     * @param int $x
+     * @param int $y
+     */
     public function moveToRoom(int $x, int $y): void
     {
         $this->tokenLocation = "room_{$x}_{$y}";
         $this->tokenLocationArg = 0;
     }
 
+    /**
+     * Moves the token to the supply.
+     */
     public function moveToSupply(): void
     {
         $this->tokenLocation = 'supply';
         $this->tokenLocationArg = 0;
     }
 
+    /**
+     * Gets the room coordinates if the token is in a room.
+     *
+     * @return array|null
+     */
     public function getRoomCoordinates(): ?array
     {
         if (preg_match('/^room_(\d+)_(\d+)$/', $this->tokenLocation, $matches)) {
@@ -113,7 +189,12 @@ class TokenModel
         return null;
     }
 
-    // Create from array (for compatibility)
+    /**
+     * Creates a TokenModel from an array.
+     *
+     * @param array $data
+     * @return self
+     */
     public static function fromArray(array $data): self
     {
         $model = new self();
@@ -126,7 +207,11 @@ class TokenModel
         return $model;
     }
 
-    // Convert to array (for compatibility)
+    /**
+     * Converts the TokenModel to an array.
+     *
+     * @return array
+     */
     public function toArray(): array
     {
         return [

@@ -10,6 +10,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class Battle extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -27,6 +32,12 @@ class Battle extends GameState
         );
     }
 
+    /**
+     * Gets the arguments for the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return array
+     */
     public function getArgs(int $activePlayerId): array
     {
         $enemy = $this->game->getEnemyInRoom($activePlayerId);
@@ -38,6 +49,12 @@ class Battle extends GameState
         ];
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     function onEnteringState(int $activePlayerId): string {
         // Automatically start battle if player has treasure (must drop it first)
         if ($this->game->playerHasTreasure($activePlayerId)) {
@@ -47,6 +64,12 @@ class Battle extends GameState
         return "";
     }
 
+    /**
+     * Performs the battle action.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     #[Bga\Games\DeadMenPax\PossibleAction]
     public function actBattle(int $activePlayerId): string
     {

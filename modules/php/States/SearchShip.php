@@ -9,6 +9,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class SearchShip extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -25,6 +30,12 @@ class SearchShip extends GameState
         );
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @param int $activePlayerId The active player ID.
+     * @return string
+     */
     function onEnteringState(int $activePlayerId): string {
         // Check if this is the first turn (place 2 tiles)
         $isFirstTurn = $this->game->isFirstTurn($activePlayerId);

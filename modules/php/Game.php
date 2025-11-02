@@ -30,13 +30,7 @@ class Game extends \Bga\GameFramework\Table
     private PlayerDBManager $playerDBManager;
 
     /**
-     * Your global variables labels:
-     *
-     * Here, you can assign labels to global variables you are using for this game. You can use any number of global
-     * variables with IDs between 10 and 99. If you want to store any type instead of int, use $this->globals instead.
-     *
-     * NOTE: afterward, you can get/set the global variables with `getGameStateValue`, `setGameStateInitialValue` or
-     * `setGameStateValue` functions.
+     * Constructor.
      */
     public function __construct()
     {
@@ -81,11 +75,9 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Player action, example content.
+     * Plays a card.
      *
-     * In this scenario, each time a player plays a card, this method will be called. This method is called directly
-     * by the action trigger on the front side with `bgaPerformAction`.
-     *
+     * @param int $card_id The ID of the card to play.
      * @throws BgaUserException
      */
     public function actPlayCard(int $card_id): void
@@ -116,6 +108,9 @@ class Game extends \Bga\GameFramework\Table
         $this->gamestate->nextState("playCard");
     }
 
+    /**
+     * Passes the turn.
+     */
     public function actPass(): void
     {
         // Retrieve the active player ID.
@@ -132,12 +127,9 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Game state arguments, example content.
-     *
-     * This method returns some additional information that is very specific to the `playerTurn` game state.
+     * Gets the arguments for the player turn.
      *
      * @return array
-     * @see ./states.inc.php
      */
     public function argPlayerTurn(): array
     {
@@ -149,14 +141,9 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Compute and return the current game progression.
-     *
-     * The number returned must be an integer between 0 and 100.
-     *
-     * This method is called each time we are in a game state with the "updateGameProgression" property set to true.
+     * Computes and returns the current game progression.
      *
      * @return int
-     * @see ./states.inc.php
      */
     public function getGameProgression()
     {
@@ -166,9 +153,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Game state action, example content.
-     *
-     * The action method of state `nextPlayer` is called everytime the current game state is set to `nextPlayer`.
+     * Handles the next player state.
      */
     public function stNextPlayer(): void {
         // Retrieve the active player ID.
@@ -189,10 +174,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Game state action, example content.
-     *
-     * The action method of state `stEndScore` is called just before the end of the game, 
-     * if you keep `98 => GameStateBuilder::endScore()->build()` in the states.inc.php
+     * Handles the end score state.
      */
     public function stEndScore(): void {
         // Here, we would compute scores if they are not updated live, and compute average statistics
@@ -201,12 +183,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Migrate database.
-     *
-     * You don't have to care about this until your game has been published on BGA. Once your game is on BGA, this
-     * method is called everytime the system detects a game running with your old database scheme. In this case, if you
-     * change your database scheme, you just have to apply the needed changes in order to update the game database and
-     * allow the game to continue to run with your new version.
+     * Migrates the database.
      *
      * @param int $from_version
      * @return void
@@ -230,13 +207,10 @@ class Game extends \Bga\GameFramework\Table
 //       }
     }
 
-    /*
-     * Gather all information about current game situation (visible by the current player).
+    /**
+     * Gathers all information about the current game situation.
      *
-     * The method is called each time the game interface is displayed to a player, i.e.:
-     *
-     * - when the game starts
-     * - when a player refreshes the game page (F5)
+     * @return array
      */
     protected function getAllDatas(): array
     {
@@ -261,8 +235,10 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * This method is called only once, when a new game is launched. In this method, you must setup the game
-     *  according to the game rules, so that the game is ready to be played.
+     * Sets up a new game.
+     *
+     * @param array $players The players in the game.
+     * @param array $options The game options.
      */
     protected function setupNewGame($players, $options = [])
     {
@@ -313,15 +289,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * This method is called each time it is the turn of a player who has quit the game (= "zombie" player).
-     * You can do whatever you want in order to make sure the turn of this player ends appropriately
-     * (ex: pass).
-     *
-     * Important: your zombie code will be called when the player leaves the game. This action is triggered
-     * from the main site and propagated to the gameserver from a server, not from a browser.
-     * As a consequence, there is no current player associated to this action. In your zombieTurn function,
-     * you must _never_ use `getCurrentPlayerId()` or `getCurrentPlayerName()`, otherwise it will fail with a
-     * "Not logged" error message.
+     * Handles a zombie player's turn.
      *
      * @param array{ type: string, name: string } $state
      * @param int $active_player
@@ -354,7 +322,12 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Place a new room tile on the board
+     * Places a new room tile on the board.
+     *
+     * @param int $tileId The ID of the tile.
+     * @param int $x The x-coordinate.
+     * @param int $y The y-coordinate.
+     * @param int $orientation The orientation of the tile.
      */
     public function actPlaceTile(int $tileId, int $x, int $y, int $orientation = RoomTile::ORIENTATION_0): void
     {
@@ -389,7 +362,9 @@ class Game extends \Bga\GameFramework\Table
     
     
     /**
-     * Handle fire fighting action
+     * Handles the fight fire action.
+     *
+     * @param int $tileId The ID of the tile.
      */
     public function actFightFire(int $tileId): void
     {
@@ -421,7 +396,7 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Check and handle explosions
+     * Checks for and handles explosions.
      */
     public function checkForExplosions(): void
     {
@@ -448,7 +423,9 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Handle the results of an explosion, mediating between managers
+     * Handles the results of an explosion.
+     *
+     * @param array $explosionResult The result of the explosion.
      */
     public function stHandleExplosion(array $explosionResult): void
     {
@@ -470,7 +447,9 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Get board state for client
+     * Gets the board state for the client.
+     *
+     * @return array
      */
     public function getBoardState(): array
     {
@@ -498,7 +477,10 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Get valid placement positions for a tile
+     * Gets valid placement positions for a tile.
+     *
+     * @param int $tileId The ID of the tile.
+     * @return array
      */
     public function getValidPlacements(int $tileId): array
     {
@@ -516,7 +498,10 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Handle effects when a player enters a tile
+     * Handles effects when a player enters a tile.
+     *
+     * @param int $playerId The ID of the player.
+     * @param RoomTile $tile The tile entered.
      */
     private function handleTileEffects(int $playerId, RoomTile $tile): void
     {
@@ -529,7 +514,10 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Get tile data from material (you would implement this based on your tile definitions)
+     * Gets tile data from `material.inc.php`.
+     *
+     * @param int $tileId The ID of the tile.
+     * @return array
      */
     private function getTileData(int $tileId): array
     {
@@ -544,7 +532,10 @@ class Game extends \Bga\GameFramework\Table
     }
     
     /**
-     * Increase player fatigue
+     * Increases a player's fatigue.
+     *
+     * @param int $playerId The ID of the player.
+     * @param int $amount The amount to increase fatigue by.
      */
     private function increaseFatigue(int $playerId, int $amount): void
     {
@@ -560,9 +551,9 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Example of debug function.
-     * Here, jump to a state you want to test (by default, jump to next player state)
-     * You can trigger it on Studio using the Debug button on the right of the top bar.
+     * Jumps to a specific game state for debugging.
+     *
+     * @param int $state The ID of the state to jump to.
      */
     public function debug_goToState(int $state = 3) {
         $this->gamestate->jumpToState($state);

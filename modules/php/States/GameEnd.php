@@ -9,6 +9,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class GameEnd extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -22,6 +27,11 @@ class GameEnd extends GameState
         );
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @return string
+     */
     function onEnteringState(): string {
         // Calculate final scores and determine win/loss
         $this->game->calculateFinalScores();

@@ -9,6 +9,11 @@ use Bga\Games\DeadMenPax\Game;
 
 class GameSetup extends GameState
 {
+    /**
+     * Constructor.
+     *
+     * @param Game $game The game instance.
+     */
     function __construct(
         protected Game $game,
     ) {
@@ -24,6 +29,11 @@ class GameSetup extends GameState
         );
     }
 
+    /**
+     * Called when entering the game state.
+     *
+     * @return string
+     */
     function onEnteringState(): string {
         // Initialize game setup
         $this->game->initializeGame();

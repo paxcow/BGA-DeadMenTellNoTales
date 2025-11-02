@@ -25,82 +25,150 @@ class SkelitCardModel
     #[dbColumn('card_location_arg')]
     private int $cardLocationArg;
 
-    // Getters
+    /**
+     * Gets the card ID.
+     *
+     * @return int
+     */
     public function getCardId(): int
     {
         return $this->cardId;
     }
 
+    /**
+     * Gets the card type.
+     *
+     * @return string
+     */
     public function getCardType(): string
     {
         return $this->cardType;
     }
 
+    /**
+     * Gets the card type argument.
+     *
+     * @return int
+     */
     public function getCardTypeArg(): int
     {
         return $this->cardTypeArg;
     }
 
+    /**
+     * Gets the card location.
+     *
+     * @return string
+     */
     public function getCardLocation(): string
     {
         return $this->cardLocation;
     }
 
+    /**
+     * Gets the card location argument.
+     *
+     * @return int
+     */
     public function getCardLocationArg(): int
     {
         return $this->cardLocationArg;
     }
 
-    // Setters
+    /**
+     * Sets the card ID.
+     *
+     * @param int $cardId
+     */
     public function setCardId(int $cardId): void
     {
         $this->cardId = $cardId;
     }
 
+    /**
+     * Sets the card type.
+     *
+     * @param string $cardType
+     */
     public function setCardType(string $cardType): void
     {
         $this->cardType = $cardType;
     }
 
+    /**
+     * Sets the card type argument.
+     *
+     * @param int $cardTypeArg
+     */
     public function setCardTypeArg(int $cardTypeArg): void
     {
         $this->cardTypeArg = $cardTypeArg;
     }
 
+    /**
+     * Sets the card location.
+     *
+     * @param string $cardLocation
+     */
     public function setCardLocation(string $cardLocation): void
     {
         $this->cardLocation = $cardLocation;
     }
 
+    /**
+     * Sets the card location argument.
+     *
+     * @param int $cardLocationArg
+     */
     public function setCardLocationArg(int $cardLocationArg): void
     {
         $this->cardLocationArg = $cardLocationArg;
     }
 
-    // Business logic methods
+    /**
+     * Checks if the card is in the deck.
+     *
+     * @return bool
+     */
     public function isInDeck(): bool
     {
         return $this->cardLocation === 'deck';
     }
 
+    /**
+     * Checks if the card is in the discard pile.
+     *
+     * @return bool
+     */
     public function isDiscarded(): bool
     {
         return $this->cardLocation === 'discard';
     }
 
+    /**
+     * Moves the card to the deck.
+     */
     public function moveToDeck(): void
     {
         $this->cardLocation = 'deck';
         $this->cardLocationArg = 0;
     }
 
+    /**
+     * Moves the card to the discard pile.
+     */
     public function discard(): void
     {
         $this->cardLocation = 'discard';
         $this->cardLocationArg = 0;
     }
 
-    // Create from array (for compatibility)
+    /**
+     * Creates a SkelitCardModel from an array.
+     *
+     * @param array $data
+     * @return self
+     */
     public static function fromArray(array $data): self
     {
         $model = new self();
@@ -113,7 +181,11 @@ class SkelitCardModel
         return $model;
     }
 
-    // Convert to array (for compatibility)
+    /**
+     * Converts the SkelitCardModel to an array.
+     *
+     * @return array
+     */
     public function toArray(): array
     {
         return [
