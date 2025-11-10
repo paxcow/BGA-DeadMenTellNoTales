@@ -1,0 +1,351 @@
+plan:
+  overview:
+    goals:
+      - Align all PHP state classes with the rulebook.
+      - Define required manager APIs per state.
+      - Specify orchestration responsibilities in Game.php.
+      - Ensure battle context survives reloads (persistent storage).
+    phases:
+      - Phase 0: Shared foundations (applied once).
+      - Phase 1..8: One state at a time in game flow order.
+      - Phase 9: Final verification &amp; polish.
+    persistence:
+      description: &gt;
+        Battle context must persist across reloads. Store it in the database,
+        e.g. PlayerDBManager columns (current_enemy_token_id, current_battle_room_id)
+        or new table keyed by player_id/state. Game reloads rehydrate from DB before
+        delivering getArgs or onEnteringState.
+      synchronization:
+        - Update DB whenever battle target changes or battle ends.
+        - Clear DB entries on battle completion.
+        - Avoid relying solely on in-memory arrays.
+
+  phase0_foundations:
+    modifications:
+      RoomTile:
+        add_fields:
+          deckhandCount: int (default 0)
+        methods:
+          - getDeckhandCount(): int
+          - setDeckhandCount(int $value): void
+          - addDeckhands(int $delta): void
+          - removeDeckhands(int $delta): void
+      coordinate_id_conversion:
+        helpers:
+          BoardManager:
+            - getTileById(int $tileId): ?RoomTile (wrapper).
+            - getTileCoords(int $tileId): array{x:int,y:int}.
+            - getTileIdFromCoords(int $x, int $y): ?int.
+        usage: All managers accept both tileId and (x,y) via overloads/wrappers.
+      game_state_values:
+        add:
+          - TILE_DECK_POINTER (int).
+          - PASSED_TOKENS_JSON (string JSON map).
+          - Optional: BATTLE_CONTEXT_JSON (string JSON map keyed by player).
+      Game.php helpers:
+        - loadBattleContextFromDB(): void.
+        - persistBattleContext(int $playerId, ?array $context): void.
+      manager_sync:
+        - Ensure PirateManager, TokenManager, ItemManager refresh or lazily reload after Game.php writes.
+
+  phase1_state: SearchShip
+    state_requirements:
+      onEnteringState:
+        - drawNextRoomTile(): int.
+        - persist tile draw pointer.
+      getArgs:
+        - expose tile data, valid placements, trapdoor indicator.
+      actions:
+        - actPlaceTile validates orientation and updates board.
+        - handles trapdoor ⇒ tile-&gt;addDeckhands(1).
+        - placeRandomTokenInRoom(tileId).
+    manager_updates:
+      BoardManager:
+        - placeTile already ok (confirm orientation handling).
+        - getValidPlacementPositions returns tileId-based positions.
+      TokenManager:
+        - add placeRandomTokenInRoom(int $tileId): ?string (loop draw+place).
+      RoomTile:
+        - integrate deckhand count into serialization.
+    game_methods:
+      - initializeTileDeck(): void (during setup).
+      - drawNextRoomTile(): int.
+      - getNextTileToPlace(): int.
+      - getTileData(int $tileId): array (make public, load from material).
+      - placeTokenForNewRoom(int $tileId): void.
+      - checkForSecondExit(): void (dinghy placement).
+    data_persistence:
+      - Store tile deck pointer in TILE_DECK_POINTER state value.
+
+  phase2_state: ResolveBattles
+    purpose: route player entering combat to correct next state.
+    requirements:
+      onEnteringState:
+        - determine enemies in player’s room.
+        - if zero ⇒ TakeActions (defensive fallback).
+        - if one ⇒ set battle context and go Battle.
+        - if more ⇒ go ChooseEnemy.
+    manager_updates:
+      TokenManager:
+        - add getEnemiesInRoomById(int $tileId): array (enemy tokens, includes strength/type).
+    game_methods:
+      - getEnemiesInCurrentRoom(int $playerId): array.
+      - setBattleContext(int $playerId, array $context): void (persist).
+      - clearBattleContext(int $playerId): void (persist null).
+
+  phase3_state: ChooseEnemy
+    requirements:
+      getArgs:
+        - list selectable enemies (id, type, strength).
+      possible_action selectEnemy(enemyTokenId):
+        - validate token present and enemy.
+        - store in battle context (persist).
+        - notify selection.
+        - transition to Battle.
+    game_methods:
+      - initializeEnemySelection(int $playerId): void (prefetch/persist context).
+      - setCurrentBattleEnemy(int $playerId, string $tokenId): void (persist).
+    persistence:
+      - store enemy token id and room id in DB for reload resilience.
+
+  phase4_state: Battle
+    requirements:
+      onEnteringState:
+        - load persisted battle context (tokenId, roomId).
+        - ensure enemy still present; if not, clear context and return TakeActions.
+      getArgs:
+        - player stats (fatigue, action tokens, battle track).
+        - enemy info (type, strength).
+        - modifiers (item, track).
+        - canRetreat (guard + rules).
+      possible_actions:
+        fight(useBattleTrack, useItem):
+          - roll die (1-6).
+          - compute modifiers:
+            - battle track (if useBattleTrack; reset to cutlass floor).
+            - item (ItemManager::getItemBattleModifier).
+          - determine outcome:
+            - win ⇒ flip enemy token ⇒ handle additional enemies (return resolveBattles/TakeActions).
+            - lose ⇒ add fatigue (difference); guard retreat handling (roll).
+        retreat():
+          - guard only, transitions to PlayerRetreat.
+      persistence:
+        - update battle context after each fight (e.g., remove token, set next enemy).
+        - clear context on battle completion.
+    manager_updates:
+      TokenManager:
+        - add flipEnemyToken(string $tokenId): void (wrap flipToken()).
+        - getTokenStrength(string $tokenId): int (read token metadata).
+      ItemManager:
+        - add getItemBattleModifier(int $playerId): int (Sword +1; others).
+      PirateManager:
+        - add useBattleTrack(int $playerId): int (returns modifier, resets track respecting cutlass floor).
+        - add gainFatigue(int $playerId, int $amount, string $reason): void (alias adjustFatigue).
+    game_methods:
+      - getCurrentBattleEnemy(int $playerId): array (load from DB).
+      - initializeCurrentBattle(int $playerId): void (if context missing, auto pick).
+      - canRetreatFromGuardBattle(int $playerId): bool (guard type &amp; adjacent room availability).
+      - persistBattleOutcome(int $playerId, array $data): void (update DB context, check transitions).
+    notifications:
+      - battleUpdate (existing call) with full details.
+      - enemySelected from ChooseEnemy.
+
+  phase5_state: PlayerRetreat
+    requirements:
+      onEnteringState:
+        - calculate legal retreat rooms (doors + fatigue constraints).
+        - persist candidate list (optional) to avoid recomputation if reload.
+      getArgs:
+        - list of rooms (id, coords, fire levels).
+      possible_action chooseRetreatRoom(roomId):
+        - validate against computed list.
+        - move pirate via PirateManager-&gt;movePirateToRoom().
+        - apply movement fatigue (entering new room + base 1).
+        - notify movement (include last room).
+        - transition:
+          - if action tokens remain ⇒ TakeActions.
+          - else ⇒ SkelitsRevenge.
+    manager_updates:
+      PirateManager:
+        - add applyMovementFatigue(int $playerId, int $roomsMoved = 1).
+        - track last room moved from (optional property in DB).
+    game_methods:
+      - calculateRetreatOptions(int $playerId): array (doors + fatigue).
+      - getPossibleRetreatRooms(int $playerId): array (expose to state).
+      - getLastRoom(int $playerId): ?int (for notification).
+
+  phase6_state: ItemSwapChoice
+    trigger: when player steals item from another player during TakeActions.
+    context:
+      - store original active player and victim in DB (item swap context).
+    state_requirements:
+      onEnteringState:
+        - ensure victim is active player (set via Game.php).
+        - load available items (ItemManager-&gt;getAvailableItemsOnTable()).
+      getArgs:
+        - available_items, original_active_player_id.
+      possible_action chooseNewItem(itemId):
+        - validate item is on table.
+        - assign to victim (ItemManager-&gt;assignItemToPlayer()).
+        - remove from table (if needed).
+        - reactivate original player (Game.php-&gt;reactivateOriginalActivePlayer()).
+        - clear item swap context in DB.
+        - transition back to TakeActions.
+    manager_updates:
+      ItemManager:
+        - add assignItemToPlayer(int $playerId, int $itemId): void.
+        - add removeItemFromTable(int $itemId): void.
+    game_methods:
+      - setItemSwapContext(int $originalPlayerId, int $victimPlayerId): void (persist JSON).
+      - getOriginalActivePlayerFromItemSwap(): int.
+      - initializeItemSwapChoice(int $victimPlayerId): void.
+      - reactivateOriginalActivePlayer(int $playerId): void.
+
+  phase7_state: TakeActions
+    description: largest state; manage action tokens, movement, combat triggers.
+    requirements:
+      onEnteringState:
+        - initializePlayerTurn(int $playerId): set/reset action tokens, apply passed tokens.
+      getArgs:
+        - actionTokensRemaining, possibleActions (list), movement targets, pickupable tokens, swappable items, carrying treasure flag, exit availability.
+      actions:
+        list:
+          - walk(roomId)
+          - run(roomId)
+          - fightFire()
+          - eliminateDeckhand(roomId)
+          - pickupToken(tokenId)
+          - dropToken(tokenId)
+          - rest()
+          - increaseBattleStrength() (advance track)
+          - swapItem(itemId, sourcePlayerId)
+          - exitShip()
+          - pass()
+        each action:
+          - validate tokens remaining.
+          - validate inputs (doors, fatigue, deckhand counts).
+          - update PirateManager (movement &amp; fatigue).
+          - update TokenManager (pickup/drop).
+          - update RoomTile deckhand counts.
+          - notify relevant events.
+          - decrement action tokens (unless free item ability).
+          - check for enemies in new room ⇒ transition ResolveBattles.
+    manager_updates:
+      PirateManager:
+        - getPlayerModel(int $playerId): PlayerModel (for DB fields).
+        - spendActionToken(int $playerId): void (ensures &gt;0).
+        - increaseBattleTrack(int $playerId): void (handles max &amp; cutlass floor).
+        - getPassedTokens(int $playerId): int (if stored per player).
+      TokenManager:
+        - getDeckhandCountInRoom(int $tileId): int (via RoomTile).
+        - removeDeckhand(int $tileId, int $count = 1): void (updates RoomTile + notify).
+        - getPickupableTokensByPlayer(int $playerId): array (object-side tokens).
+        - moveTokenToPlayer(string $tokenId, int $playerId): void (persist).
+        - moveTokenToRoom(string $tokenId, int $tileId): void.
+        - doesPlayerHaveToken(int $playerId, string $tokenId): bool.
+        - getPlayerTreasure(int $playerId): ?array.
+      BoardManager:
+        - getAdjacentRooms(int $tileId): array&lt;int&gt;.
+        - getRunTargets(int $tileId): array&lt;int&gt;.
+        - getRunPath(int $startTileId, int $targetTileId): array&lt;int&gt;.
+    game_methods:
+      - getPlayerById(int $playerId): array (PlayerDBManager-&gt;createObjectFromDB).
+      - getPlayerCurrentRoom(int $playerId): int (tileId).
+      - getAvailableActions(int $playerId): array (calculate from rulebook).
+      - getWalkTargets(int $playerId): array&lt;int&gt;.
+      - getRunTargets(int $playerId): array&lt;int&gt;.
+      - getRunPath(int $playerId, int $targetTileId): array&lt;int&gt;.
+      - getPickupableTokens(int $playerId): array (merge board + player restrictions).
+      - getSwappableItems(int $playerId): array (ItemManager).
+      - isCarryingTreasure(int $playerId): bool.
+      - canExitShip(int $playerId): bool (starting tile or dinghy + carrying treasure rules).
+      - placeTreasureOnDinghy(string $tokenId): void (TokenManager move to dock).
+      - getTreasuresLooted(): int (StatsManager).
+      - checkWinCondition(): bool (treasures + exit + Captain Fromm status).
+      - storePassedTokens(int $playerId, int $count): void (persist JSON).
+      - applyItemFreeActionBonuses(int $playerId, string $action): bool (compass, dagger, rum).
+    notifications:
+      - move, fireLevelChange, deckhandChange, tokenChange, battleTrackChange, fatigueChange, itemSwap, exitShip.
+    persistence:
+      - Action tokens stored in PlayerDBManager (actionsRemaining).
+      - Passed tokens stored in PASSED_TOKENS_JSON map.
+      - Treasure/dinghy state via TokenManager + StatsManager.
+
+  phase8_state: SkelitsRevenge
+    requirements:
+      onEnteringState:
+        - draw Skelit card (SkelitDeckManager).
+        - apply fire dice adjustments.
+        - add/spread deckhands (RoomTile deckhandCount).
+        - move skeleton crew toward nearest pirates.
+        - handle Captain Fromm if present.
+        - check for explosions (Game.php-&gt;checkForExplosions()).
+        - transition to PlayerTurn (next player) unless game end.
+    manager_updates:
+      SkelitDeckManager:
+        - drawCard(): array.
+        - resetDeckOnShuffle(): void.
+      TokenManager:
+        - moveSkeletonCrewById(string $tokenId, int $fromTileId, int $toTileId): bool.
+      BoardManager:
+        - applyFireEffect(color, number): void (increase dice).
+        - addFireDieIfAbsent(color): void.
+    game_methods:
+      - resolveSkelitCard(array $card): void.
+      - applyFireEffects(array $effects): void.
+      - applyDeckhandEffects(array $effects): void (update RoomTile counts + notify).
+      - moveSkeletonCrew(): void.
+      - checkGameLossConditions(): void.
+    persistence:
+      - Deck order tracked by SkelitDeckManager (existing DB).
+      - Deckhand counts already on RoomTile.
+
+  phase9_polish:
+    tasks:
+      - Ensure all notifications localized and consistent.
+      - Add PHPUnit tests under /tests/Server for new manager methods (where feasible).
+      - Add Vitest client tests for state args (optional).
+      - Update docs (misc/docs/states.md) to reflect new state flows.
+      - Validate rulebook alignment (manual QA).
+      - Prepare future enhancements (Captain Fromm, variants).
+
+implementation_guidelines:
+  ordering:
+    - Apply Phase 0 changes once.
+    - Implement phases sequentially (SearchShip → SkelitsRevenge).
+  coding_standards:
+    - Strict types, PSR-12.
+    - Keep manager APIs cohesive; private helpers in Game.php for orchestration.
+    - When persisting JSON, centralize encode/decode helpers to avoid duplication.
+  persistence_notes:
+    battle_context_storage:
+      approach:
+        - Add columns to `player` table: `current_enemy_token_id`, `current_battle_room_id`, `battle_state`.
+        - Alternatively new table `player_battle_context`.
+      serialization: JSON object with keys {enemyTokenId, roomId, modifiers, timestamp}.
+      reload_process:
+        - load in Game constructor or lazily in getArgs.
+        - if context invalid (enemy gone), clear and return control to TakeActions.
+    passed_tokens_storage:
+      - store in global JSON map keyed by player_id, persisted via setGameStateValue.
+    tile_deck_pointer:
+      - integer index into shuffled tile deck array stored in state.
+
+appendices:
+  data_models:
+    RoomTileModel:
+      additional_fields:
+        - deckhand_count INT NOT NULL DEFAULT 0.
+  database_changes:
+    - ALTER TABLE player ADD current_enemy_token_id VARCHAR(64) NULL.
+    - ALTER TABLE player ADD current_battle_room_id INT NULL.
+    - ALTER TABLE player ADD battle_state VARCHAR(32) NULL (optional detail like 'guard', 'skeleton').
+  testing:
+    unit_tests:
+      - BoardManagerTest::testDeckhandUpdates().
+      - TokenManagerTest::testEnemyQueriesByRoomId().
+      - GameTest::testBattleContextPersistence().
+    manual_checks:
+      - Multiplayer battle flow with reload.
+      - Item swap interruption and resume.
+      - Deckhand actions aligning with rulebook.

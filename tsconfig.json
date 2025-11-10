@@ -9,5 +9,5 @@
     "paths": { "@/*": ["client/*"] },
     "types": ["vitest/globals", "node"]
   },
-  "include": ["client", "tests/Client", "tests/e2e", "spec"]
+  "include": ["src", "bga-framework.d.ts", "client", "tests/Client", "tests/e2e", "spec"]
 }

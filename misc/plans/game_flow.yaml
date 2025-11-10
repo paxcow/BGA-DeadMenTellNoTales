@@ -1,0 +1,706 @@
+# Dead Men Tell No Tales - Complete Game Flow Documentation
+# This file documents the state machine, transitions, conditions, and game mechanics
+
+# ==============================================================================
+# STATE MACHINE OVERVIEW
+# ==============================================================================
+
+states:
+  - id: 1
+    name: GameSetup
+    type: GAME
+    description: "Initializes the game"
+    
+  - id: 2
+    name: PlayerTurn
+    type: GAME
+    description: "Manages turn transition and action token allocation"
+    
+  - id: 3
+    name: SearchShip
+    type: ACTIVE_PLAYER
+    description: "Player draws and places a room tile"
+    
+  - id: 4
+    name: TakeActions
+    type: ACTIVE_PLAYER
+    description: "Player spends action tokens on various actions"
+    
+  - id: 5
+    name: Battle
+    type: ACTIVE_PLAYER
+    description: "Player fights a Skeleton Crew or Guard"
+    
+  - id: 6
+    name: SkelitsRevenge
+    type: GAME
+    description: "Resolves Skelit's Revenge card effects"
+    
+  - id: 7
+    name: ResolveBattles
+    type: GAME
+    description: "Manager state that checks for enemies and routes to appropriate battle state"
+    
+  - id: 8
+    name: ChooseEnemy
+    type: ACTIVE_PLAYER
+    description: "Player selects which enemy to fight when multiple are present"
+    
+  - id: 9
+    name: PlayerRetreat
+    type: ACTIVE_PLAYER
+    description: "Player selects adjacent room to retreat to after losing battle"
+    
+  - id: 10
+    name: ItemSwapChoice
+    type: ACTIVE_PLAYER
+    description: "Another player chooses new item when their item was taken"
+    
+  - id: 99
+    name: GameEnd
+    type: GAME
+    description: "Terminal state - game over"
+
+# ==============================================================================
+# STATE TRANSITIONS
+# ==============================================================================
+
+transitions:
+  GameSetup:
+    next: PlayerTurn
+    description: "After game initialization"
+    
+  PlayerTurn:
+    next: SearchShip
+    gameEnd: GameEnd
+    description: "Activates next player and allocates action tokens"
+    
+  SearchShip:
+    next: TakeActions
+    gameEnd: GameEnd
+    description: "After tile is placed, or if tile cannot be placed (LOSS)"
+    
+  TakeActions:
+    next: SkelitsRevenge
+    resolveBattles: ResolveBattles
+    itemSwapChoice: ItemSwapChoice
+    gameEnd: GameEnd
+    description: "After all actions spent/passed, or when encountering enemies, or when exiting ship with final treasure (WIN)"
+    
+  ResolveBattles:
+    battle: Battle
+    chooseEnemy: ChooseEnemy
+    takeActions: TakeActions
+    description: "Routes based on number of enemies in room"
+    
+  ChooseEnemy:
+    battle: Battle
+    description: "After player selects enemy"
+    
+  Battle:
+    next: TakeActions
+    resolveBattles: ResolveBattles
+    playerRetreat: PlayerRetreat
+    gameEnd: GameEnd
+    description: "After battle resolution, or if player dies (check for LOSS)"
+    
+  PlayerRetreat:
+    next: TakeActions
+    skelitsRevenge: SkelitsRevenge
+    description: "After player selects retreat room, returns to actions if tokens remain"
+    
+  ItemSwapChoice:
+    next: TakeActions
+    description: "After other player selects new item, reactivates original player"
+    
+  SkelitsRevenge:
+    next: PlayerTurn
+    resolveBattles: ResolveBattles
+    gameEnd: GameEnd
+    description: "After card effects resolved, or if loss condition triggered"
+
+# ==============================================================================
+# ACTION TOKEN FLOW
+# ==============================================================================
+
+action_tokens:
+  allocation:
+    state: PlayerTurn
+    logic: |
+      baseTokens = player.isLydiaLamore ? 6 : 5
+      receivedTokens = tokensPassedFromPreviousPlayer (stored in game state)
+      totalTokens = baseTokens + receivedTokens
+      player.actionTokensRemaining = totalTokens
+      
+  spending:
+    state: TakeActions
+    logic: |
+      Each action decrements player.actionTokensRemaining by 1
+      
+  passing:
+    state: TakeActions -> SkelitsRevenge transition
+    logic: |
+      tokensToPass = player.actionTokensRemaining
+      Store tokensToPass for next PlayerTurn state
+      
+  special_case_exit_ship:
+    state: TakeActions
+    action: exitShip()
+    logic: |
+      Immediately end turn
+      Pass unused tokens to next player
+      Skip SkelitsRevenge if this causes win condition
+
+# ==============================================================================
+# WIN CONDITION
+# ==============================================================================
+
+win_condition:
+  requirements:
+    - "Required number of treasures looted (based on difficulty)"
+    - "All pirates have exited the ship"
+    
+  checked_at:
+    - state: TakeActions
+      action: exitShip()
+      logic: |
+        if (treasuresLooted >= requiredTreasures && allPiratesOffShip()) {
+          // SPECIAL RULE: Skip SkelitsRevenge on winning turn
+          return GameEnd
+        }
+        
+  difficulty_requirements:
+    scurvy_dog:
+      2-3_players: 4 treasures
+      4-5_players: 5 treasures
+    buccaneer:
+      2-3_players: 5 treasures
+      4-5_players: 6 treasures
+    admiral:
+      2-3_players: 6 treasures
+      4-5_players: 6 treasures + defeat all Skeleton Crew
+
+# ==============================================================================
+# LOSS CONDITIONS
+# ==============================================================================
+
+loss_conditions:
+  explosion:
+    description: "Explosion Marker reaches the skull and crossbones space"
+    checked_at:
+      - state: SkelitsRevenge
+        phase: "After fire effects resolved"
+        logic: |
+          if (explosionTracker >= maxExplosions) {
+            return GameEnd
+          }
+          
+  overwhelmed:
+    description: "Need to add Deckhand but supply exhausted"
+    checked_at:
+      - state: SkelitsRevenge
+        phase: "During deckhand effects"
+        logic: |
+          deckhandsNeeded = calculateFromCard()
+          if (deckhandsNeeded > availableDeckhands) {
+            return GameEnd
+          }
+          
+  trapped:
+    description: "Cannot legally place Room Tile"
+    checked_at:
+      - state: SearchShip
+        phase: "When drawing tile"
+        logic: |
+          validPlacements = getValidPlacements(tile)
+          if (validPlacements.length === 0) {
+            return GameEnd
+          }
+          
+  lost_treasure:
+    description: "Too many Treasures destroyed to reach goal"
+    checked_at:
+      - state: SkelitsRevenge
+        phase: "After room explosions"
+        logic: |
+          if (treasuresRemaining < requiredTreasures - treasuresLooted) {
+            return GameEnd
+          }
+          
+  untimely_death:
+    description: "Pirate dies after all required treasure has been looted"
+    checked_at:
+      - state: Battle
+        phase: "After pirate dies from fatigue"
+        logic: |
+          if (treasuresLooted >= requiredTreasures && !allPiratesOffShip()) {
+            return GameEnd
+          }
+          
+  no_more_pirates:
+    description: "Pirate dies and no Character Cards remain"
+    checked_at:
+      - state: Battle
+        phase: "When pirate dies"
+        logic: |
+          if (availableCharacterCards.length === 0) {
+            return GameEnd
+          }
+
+# ==============================================================================
+# DETAILED STATE FLOWS
+# ==============================================================================
+
+state_flows:
+  
+  # --------------------------------------------------------------------------
+  # GAME SETUP FLOW
+  # --------------------------------------------------------------------------
+  game_setup:
+    state: GameSetup
+    steps:
+      - "Initialize 4 starting tiles with fire dice"
+      - "Place one Deckhand in trapdoor room"
+      - "Shuffle Skelit's Revenge cards"
+      - "Shuffle room tiles, offset based on player count"
+      - "Fill token bag"
+      - "Deal character and item cards to players"
+      - "Set player fatigue and battle track to 0"
+    transition: PlayerTurn
+    
+  # --------------------------------------------------------------------------
+  # PLAYER TURN FLOW
+  # --------------------------------------------------------------------------
+  player_turn:
+    state: PlayerTurn
+    steps:
+      - "Call activeNextPlayer()"
+      - "Calculate action tokens: base (5 or 6) + passed tokens"
+      - "Check for immediate game end conditions"
+    transition: SearchShip
+    
+  # --------------------------------------------------------------------------
+  # SEARCH SHIP FLOW
+  # --------------------------------------------------------------------------
+  search_ship:
+    state: SearchShip
+    steps:
+      - "Draw next room tile from deck"
+      - "Calculate valid placements"
+      - "If no valid placements: LOSS (trapped)"
+      - "Send placeRoomTile notification to active player"
+      - "Player action: placeTile(tileId, x, y, orientation)"
+      - "Place fire die on tile based on pip count"
+      - "Draw token from bag"
+      - "Place token on tile (Guard side up, or Skeleton Crew side up, or Trapdoor + Deckhand)"
+      - "If last tile AND has extra door: place Dinghy (second exit)"
+    special_case:
+      first_turn: "Place TWO tiles instead of one, resolve all effects from first before placing second"
+    transition: TakeActions
+    
+  # --------------------------------------------------------------------------
+  # TAKE ACTIONS FLOW
+  # --------------------------------------------------------------------------
+  take_actions:
+    state: TakeActions
+    
+    available_actions:
+      walk:
+        cost: 1 token
+        parameters: [roomId]
+        effects:
+          - "Move to adjacent room through door"
+          - "Gain fatigue = (newRoomFireLevel - oldRoomFireLevel) if positive"
+          - "Check fatigue limits"
+          - "If room has enemies: transition to ResolveBattles"
+          
+      run:
+        cost: 1 token
+        parameters: [roomId]
+        effects:
+          - "Move TWO rooms through doors"
+          - "Gain fatigue for BOTH rooms passed through"
+          - "Gain additional 2 fatigue"
+          - "Check fatigue limits after each room"
+          - "If final room has enemies: transition to ResolveBattles"
+          
+      fightFire:
+        cost: 1 token
+        parameters: []
+        effects:
+          - "Decrease fire die in current room by 1"
+          - "If die at 1: remove die"
+          
+      eliminateDeckhand:
+        cost: 1 token
+        parameters: [roomId]
+        effects:
+          - "Remove one Deckhand from current OR adjacent room"
+          - "Return Deckhand to supply"
+          
+      pickupToken:
+        cost: 1 token
+        parameters: [tokenId]
+        effects:
+          - "Pick up Treasure, Cutlass, or Grog token from current room"
+          - "Can only carry one Treasure at a time"
+          - "Can carry multiple Cutlass/Grog"
+          - "Blocked if 2+ Deckhands in room"
+          
+      dropToken:
+        cost: 0 tokens
+        parameters: [tokenId]
+        effects:
+          - "Drop token in current room"
+          
+      rest:
+        cost: 1 token
+        parameters: []
+        effects:
+          - "Decrease fatigue by 2"
+          
+      increaseBattleStrength:
+        cost: 1 token
+        parameters: []
+        effects:
+          - "Move Battle Token up 1 space on Battle Track (max +4)"
+          
+      swapItem:
+        cost: 1 token
+        parameters: [itemId, sourcePlayerId]
+        effects:
+          - "Take new item card"
+          - "Place old item card face up on table OR give to another player"
+          - "If taken from another player: transition to ItemSwapChoice for that player"
+          
+      exitShip:
+        cost: 0 tokens (but ends turn)
+        parameters: [treasureId (optional)]
+        effects:
+          - "Move off ship through exit"
+          - "If carrying treasure: loot it (place on Dinghy)"
+          - "Reduce fatigue by half (rounded up)"
+          - "Pass unused action tokens"
+          - "Check WIN condition"
+          - "If won: skip SkelitsRevenge, go to GameEnd"
+          - "Else: transition to SkelitsRevenge"
+          
+      pass:
+        cost: 0 tokens (ends turn)
+        parameters: []
+        effects:
+          - "End action phase"
+          - "Pass unused action tokens"
+          - "Transition to SkelitsRevenge"
+    
+    looting_restrictions:
+      description: "When carrying Treasure, action choices are limited"
+      allowed_actions: [walk, rest, swapItem, dropToken, exitShip]
+      fatigue_calculation: "Gain fatigue = fireLevel of room entered (not difference)"
+      
+    transition_logic: |
+      if (player performs walk/run into room with enemies) {
+        return ResolveBattles
+      }
+      if (player performs swapItem from another player) {
+        return ItemSwapChoice
+      }
+      if (player performs exitShip && wins game) {
+        return GameEnd
+      }
+      if (player performs exitShip OR pass) {
+        return SkelitsRevenge
+      }
+      
+  # --------------------------------------------------------------------------
+  # RESOLVE BATTLES FLOW
+  # --------------------------------------------------------------------------
+  resolve_battles:
+    state: ResolveBattles
+    steps:
+      - "Count enemies (Guards + Skeleton Crew) in player's room"
+      - "If 0 enemies: return to TakeActions"
+      - "If 1 enemy: transition to Battle (auto-select enemy)"
+      - "If 2+ enemies: transition to ChooseEnemy"
+    transition_logic: |
+      enemyCount = getEnemiesInRoom(playerId)
+      if (enemyCount === 0) return TakeActions
+      if (enemyCount === 1) return Battle
+      return ChooseEnemy
+      
+  # --------------------------------------------------------------------------
+  # CHOOSE ENEMY FLOW
+  # --------------------------------------------------------------------------
+  choose_enemy:
+    state: ChooseEnemy
+    steps:
+      - "Display all enemies in room to player"
+      - "Player action: selectEnemy(enemyId)"
+      - "Set selected enemy as current battle target"
+    transition: Battle
+    
+  # --------------------------------------------------------------------------
+  # BATTLE FLOW
+  # --------------------------------------------------------------------------
+  battle:
+    state: Battle
+    
+    setup:
+      - "If player carrying Treasure: drop it in room (no action cost)"
+      - "Identify enemy type (Skeleton Crew or Guard)"
+      
+    actions:
+      fight:
+        steps:
+          - "Roll Battle Die (1-6)"
+          - "Add modifiers: Item Card + Battle Track (optional)"
+          - "Calculate total Battle Strength"
+          - "Compare to enemy's Battle Strength"
+          
+        if_win:
+          - "Flip enemy token to reveal Cutlass/Grog"
+          - "Return to ResolveBattles to check for more enemies"
+          
+        if_lose_vs_skeleton_crew:
+          - "Gain fatigue = (enemy strength - player strength)"
+          - "Roll Battle Die again for retreat:"
+          - "  1-2: Skeleton Crew retreats to adjacent room of your choice"
+          - "  3-4: You retreat to adjacent room of your choice (transition to PlayerRetreat)"
+          - "  5: Fight again (stay in Battle)"
+          - "  6: Choose any result from 1-5"
+          
+        if_lose_vs_guard:
+          - "Gain fatigue = (enemy strength - player strength)"
+          - "Player must choose:"
+          - "  - Fight Guard again (stay in Battle), OR"
+          - "  - Retreat to adjacent room (transition to PlayerRetreat)"
+          - "Special: If no legal retreat room due to fatigue, MUST fight again"
+          
+    battle_track:
+      description: "Optional modifier, reset to lowest Cutlass marker after use"
+      
+    special_rules:
+      multiple_enemies: "Must defeat all Skeleton Crew before fighting Guards"
+      treasure_auto_drop: "Automatically dropped at battle start (no action cost)"
+      fatigue_death: "If fatigue reaches skull: pirate dies"
+      
+    death_handling:
+      - "Check: No More Pirates? (LOSS)"
+      - "Check: Untimely Death? (LOSS)"
+      - "Remove pirate figure"
+      - "Discard character and item cards"
+      - "Discard Cutlass/Grog tokens"
+      - "Reset Battle Track to 0"
+      - "If carrying Treasure: leave in death room OR destroyed if explosion"
+      - "Draw new Character Card"
+      - "Shuffle items on table and draw one at random"
+      - "Place new pirate at ship entrance"
+      
+    transition_logic: |
+      if (battle won) {
+        return ResolveBattles // check for more enemies
+      }
+      if (lost and must retreat) {
+        return PlayerRetreat
+      }
+      if (lost and fighting again) {
+        return Battle // same state
+      }
+      
+  # --------------------------------------------------------------------------
+  # PLAYER RETREAT FLOW
+  # --------------------------------------------------------------------------
+  player_retreat:
+    state: PlayerRetreat
+    steps:
+      - "Calculate legal adjacent rooms (not blocked by fatigue)"
+      - "Player action: chooseRetreatRoom(roomId)"
+      - "Move player to selected room"
+      - "Apply fatigue from movement"
+    transition_logic: |
+      if (player.actionTokensRemaining > 0) {
+        return TakeActions
+      }
+      return SkelitsRevenge
+      
+  # --------------------------------------------------------------------------
+  # ITEM SWAP CHOICE FLOW
+  # --------------------------------------------------------------------------
+  item_swap_choice:
+    state: ItemSwapChoice
+    description: "When player takes item from another player, that player gets to choose replacement"
+    steps:
+      - "Store original active player ID"
+      - "Activate the player whose item was taken"
+      - "Display available items on table"
+      - "Player action: chooseNewItem(itemId)"
+      - "Reactivate original active player"
+    transition: TakeActions
+    
+  # --------------------------------------------------------------------------
+  # SKELIT'S REVENGE FLOW
+  # --------------------------------------------------------------------------
+  skelits_revenge:
+    state: SkelitsRevenge
+    
+    steps:
+      - name: "Draw Card"
+        action: "Draw top Skelit's Revenge card from deck"
+        
+      - name: "Resolve Fire Effects"
+        logic: |
+          For each die color/number shown on card:
+            if (blank die face) {
+              Add new die of that color showing "1" to all matching rooms without fire
+            } else {
+              Increase all matching dice by 1 pip
+            }
+          
+          After fire changes:
+            Check for Powder Keg explosions (fire level reaches keg number)
+            Check for Room explosions (fire level reaches 6)
+            Handle explosion chain reactions
+            
+        explosions:
+          powder_keg:
+            - "Move fire die to keg icon (mark as exploded)"
+            - "Increase fire in adjacent room through door by 1"
+            - "Increment Explosion Track by 1"
+            
+          room:
+            - "Flip tile face down (impassable)"
+            - "Increase fire in ALL adjacent rooms by 1"
+            - "Destroy all tokens/Deckhands in room"
+            - "Pirates in room: die (check LOSS conditions)"
+            - "Increment Explosion Track by 1"
+            
+        checks:
+          - "After all explosions: Check Explosion Track full? (LOSS)"
+          - "Check: Lost Treasure? (LOSS)"
+          
+      - name: "Resolve Deckhand Effects"
+        logic: |
+          if (card shows "Add") {
+            Add one Deckhand to every room with Trapdoor icon
+            Check: Overwhelmed? (LOSS)
+          }
+          
+          if (card shows "Spread Out") {
+            For each room with Trapdoor AND Deckhands:
+              For each adjacent room through doors:
+                if (adjacent has fewer Deckhands than trapdoor room AND adjacent has no Trapdoor) {
+                  Add one Deckhand to adjacent room
+            Check: Overwhelmed? (LOSS)
+          }
+          
+      - name: "Resolve Skeleton Crew Movement"
+        logic: |
+          if (card shows Skeleton Crew move) {
+            For each Skeleton Crew token on board:
+              Find nearest pirate(s)
+              Move one room toward nearest pirate
+              If multiple pirates equidistant: players vote on direction
+              
+              if (Skeleton Crew enters room with pirate(s)) {
+                Trigger immediate battle
+                Transition to ResolveBattles
+              }
+          }
+          
+      - name: "Reshuffle Check"
+        logic: |
+          if (third card with "5" explosion has been drawn) {
+            Shuffle discard pile back into draw deck
+          }
+          
+    transition_logic: |
+      if (any LOSS condition triggered) {
+        return GameEnd
+      }
+      if (Skeleton Crew moved into room with pirate) {
+        return ResolveBattles
+      }
+      return PlayerTurn
+
+# ==============================================================================
+# SPECIAL MECHANICS
+# ==============================================================================
+
+special_mechanics:
+  
+  fatigue:
+    effects:
+      "0-5": "No restrictions"
+      "6-8": "Cannot enter fire level 4+ rooms"
+      "9-11": "Cannot enter fire level 3+ rooms"
+      "12-14": "Cannot enter fire level 2+ rooms"
+      "15+": "Pirate dies (skull icon)"
+      
+    modifications:
+      gain: "Moving to higher fire room, fire increases in current room, losing battles, running"
+      reduce: "Rest action (-2), Grog token (variable), exiting ship (÷2 round up), taking breather (÷2 round up)"
+      
+  grog:
+    usage: "Can be used at any time (no action cost)"
+    effect: "Reduce fatigue by number on token"
+    
+  cutlass:
+    placement: "Place on lowest empty Battle Track space"
+    effect: "Battle Track only resets to lowest Cutlass marker, not 0"
+    stack: "If Battle Token on same space, move it up one for free"
+    
+  taking_breather:
+    trigger: "Player voluntarily exits ship (not looting)"
+    effect: "Reduce fatigue by half (rounded up)"
+    cost: "Turn ends immediately, must pass unused action tokens"
+    
+  deckhand_effects:
+    1: "No effect"
+    2: "Cannot pick up tokens in room"
+    3+: "Cannot enter room (must eliminate or leave)"
+    
+  first_turn:
+    special_rule: "Place TWO room tiles instead of one"
+    resolution: "Resolve all effects from first tile before placing second"
+
+# ==============================================================================
+# IMPLEMENTATION NOTES
+# ==============================================================================
+
+implementation_notes:
+  
+  state_activation_rules:
+    - "Can only activate a player for ACTIVE_PLAYER state from a GAME state"
+    - "Use game state variables to store data between states"
+    - "Store tokensToPass in game state for next PlayerTurn"
+    - "Store originalActivePlayerId when transitioning to ItemSwapChoice"
+    
+  missing_state_files:
+    - ResolveBattles.php (id: 7, type: GAME)
+    - ChooseEnemy.php (id: 8, type: ACTIVE_PLAYER)
+    - PlayerRetreat.php (id: 9, type: ACTIVE_PLAYER)
+    - ItemSwapChoice.php (id: 10, type: ACTIVE_PLAYER)
+    
+  database_requirements:
+    player_table:
+      - action_tokens_remaining INT
+      - fatigue INT
+      - battle_track_position INT
+      - carrying_treasure_id INT NULL
+      
+    game_state_variables:
+      - tokens_to_pass INT
+      - explosion_tracker INT
+      - treasures_looted INT
+      - required_treasures INT
+      - original_active_player_id INT (for ItemSwapChoice)
+      
+  notification_sequence:
+    - "Send notification BEFORE state transition"
+    - "Include all necessary data for client in getArgs()"
+    - "Client responds with action, server processes, then transitions"
+    
+  battle_resolution:
+    - "Always resolve Skeleton Crew before Guards"
+    - "Loop through multiple enemies sequentially"
+    - "Use ResolveBattles state to manage the loop"

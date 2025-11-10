@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+namespace Tests;
+
 use PHPUnit\Framework\TestCase;
 use Bga\Games\DeadMenPax\BoardManager;
 use Bga\GameFramework\Table;

@@ -5,55 +5,73 @@ namespace Bga\Games\DeadMenPax\States;
 
 use Bga\GameFramework\StateType;
 use Bga\GameFramework\States\GameState;
+use Bga\GameFramework\States\PossibleAction;
 use Bga\Games\DeadMenPax\Game;
+use BgaUserException;
 
 class SearchShip extends GameState
 {
-    /**
-     * Constructor.
-     *
-     * @param Game $game The game instance.
-     */
-    function __construct(
-        protected Game $game,
-    ) {
+    public function __construct(protected Game $game)
+    {
         parent::__construct($game,
-            id: 10,
-            type: StateType::GAME,
-            name: "searchShip",
-            description: "Searching the ship...",
-            action: "stSearchShip",
+            id: 3,
+            type: StateType::ACTIVE_PLAYER,
+            description: clienttranslate('${actplayer} must draw and place a room tile'),
+            descriptionMyTurn: clienttranslate('${you} must draw and place a room tile'),
             transitions: [
-                "takeActions" => TakeActions::class,
+                "next" => TakeActions::class,
                 "gameEnd" => GameEnd::class
-            ],
+            ]
         );
     }
 
-    /**
-     * Called when entering the game state.
-     *
-     * @param int $activePlayerId The active player ID.
-     * @return string
-     */
-    function onEnteringState(int $activePlayerId): string {
-        // Check if this is the first turn (place 2 tiles)
-        $isFirstTurn = $this->game->isFirstTurn($activePlayerId);
+    public function getArgs(int $activePlayerId): array
+    {
+        // Get the next tile to place
+        $tileId = $this->game->getNextTileToPlace();
+        $tileData = $this->game->getTileData($tileId);
         
-        // Place room tile(s)
-        if ($isFirstTurn) {
-            $this->game->placeRoomTile($activePlayerId);
-            $this->game->placeRoomTile($activePlayerId);
-        } else {
-            $this->game->placeRoomTile($activePlayerId);
+        return [
+            'tileId' => $tileId,
+            'tileDoors' => $tileData['doors'],
+            'tileColor' => $tileData['color'],
+            'tilePips' => $tileData['pips'],
+            'hasPowderKeg' => $tileData['has_powder_keg'] ?? false,
+            'hasTrapdoor' => $tileData['has_trapdoor'] ?? false,
+            'validPlacements' => $this->game->getValidPlacements($tileId)
+        ];
+    }
+
+    public function onEnteringState(int $activePlayerId): void
+    {
+        // Draw the next room tile for placement
+        $this->game->drawNextRoomTile();
+    }
+
+    #[PossibleAction]
+    public function actPlaceTile(int $tileId, int $x, int $y, int $orientation): string
+    {
+        $playerId = (int)$this->game->getActivePlayerId();
+        
+        // Validate the placement
+        $validPlacements = $this->game->getValidPlacements($tileId);
+        $isValidPlacement = false;
+        
+        foreach ($validPlacements as $placement) {
+            if ($placement['x'] == $x && $placement['y'] == $y && $placement['orientation'] == $orientation) {
+                $isValidPlacement = true;
+                break;
+            }
         }
         
-        // Check if we can still place tiles (game end condition)
-        if (!$this->game->canPlaceMoreTiles()) {
-            return GameEnd::class;
+        if (!$isValidPlacement) {
+            throw new \BgaUserException("Invalid tile placement");
         }
         
-        // Move to Take Actions phase
-        return TakeActions::class;
+        // Place the tile using the game method
+        $this->game->actPlaceTile($tileId, $x, $y, $orientation);
+        
+        // Transition to next state
+        return "next";
     }
 }

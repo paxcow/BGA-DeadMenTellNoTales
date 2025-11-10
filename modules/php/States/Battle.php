@@ -5,104 +5,149 @@ namespace Bga\Games\DeadMenPax\States;
 
 use Bga\GameFramework\StateType;
 use Bga\GameFramework\States\GameState;
-use Bga\GameFramework\PossibleAction;
+use Bga\GameFramework\States\PossibleAction;
 use Bga\Games\DeadMenPax\Game;
+use BgaUserException;
 
 class Battle extends GameState
 {
-    /**
-     * Constructor.
-     *
-     * @param Game $game The game instance.
-     */
-    function __construct(
-        protected Game $game,
-    ) {
+    public function __construct(protected Game $game)
+    {
         parent::__construct($game,
-            id: 20,
+            id: 5,
             type: StateType::ACTIVE_PLAYER,
-            name: "battle",
-            description: clienttranslate('${actplayer} must battle enemies'),
-            descriptionMyTurn: clienttranslate('${you} must battle ${enemy_type} (strength ${enemy_strength})'),
+            description: clienttranslate('${actplayer} must fight a Skeleton Crew or Guard'),
+            descriptionMyTurn: clienttranslate('${you} must fight a Skeleton Crew or Guard'),
             transitions: [
-                "continueActions" => TakeActions::class,
-                "skelitsRevenge" => SkelitsRevenge::class,
-                "gameEnd" => GameEnd::class
-            ],
+                'next'            => TakeActions::class,
+                'resolveBattles'  => ResolveBattles::class,
+                'playerRetreat'   => PlayerRetreat::class,
+                'gameEnd'         => GameEnd::class,
+            ]
         );
     }
 
-    /**
-     * Gets the arguments for the game state.
-     *
-     * @param int $activePlayerId The active player ID.
-     * @return array
-     */
     public function getArgs(int $activePlayerId): array
     {
-        $enemy = $this->game->getEnemyInRoom($activePlayerId);
+        $player = $this->game->requirePirate($activePlayerId);
+        $currentEnemy = $this->game->getCurrentBattleEnemy($activePlayerId);
+        if ($currentEnemy === null) {
+            throw new \BgaUserException("No enemy available for battle");
+        }
+        
         return [
-            'player_id' => $activePlayerId,
-            'enemy_type' => $enemy['type'],
-            'enemy_strength' => $enemy['strength'],
-            'player_battle_strength' => $this->game->getPlayerBattleStrength($activePlayerId),
+            'playerId' => $activePlayerId,
+            'enemyId' => $currentEnemy['id'],
+            'enemyType' => $currentEnemy['type'],
+            'enemyStrength' => $currentEnemy['strength'],
+            'playerBattleTrack' => $player->battleStrength,
+            'playerItemModifier' => $this->game->getItemManager()->getItemBattleModifier($activePlayerId),
+            'canRetreat' => $currentEnemy['type'] === 'guard',
+            'mustFightAgain' => false
         ];
     }
 
-    /**
-     * Called when entering the game state.
-     *
-     * @param int $activePlayerId The active player ID.
-     * @return string
-     */
-    function onEnteringState(int $activePlayerId): string {
-        // Automatically start battle if player has treasure (must drop it first)
-        if ($this->game->playerHasTreasure($activePlayerId)) {
-            $this->game->dropTreasure($activePlayerId);
-        }
-        
-        return "";
+    public function onEnteringState(int $activePlayerId): void
+    {
+        // Initialize current battle enemy if not set
+        $this->game->initializeCurrentBattle($activePlayerId);
     }
 
-    /**
-     * Performs the battle action.
-     *
-     * @param int $activePlayerId The active player ID.
-     * @return string
-     */
-    #[Bga\Games\DeadMenPax\PossibleAction]
-    public function actBattle(int $activePlayerId): string
+    #[PossibleAction]
+    public function fight(bool $useBattleTrack, bool $useItem): string
     {
-        $battleResult = $this->game->performBattle($activePlayerId);
+        $playerId = (int)$this->game->getActivePlayerId();
         
-        if ($battleResult['won']) {
-            // Check if player died from fatigue after battle
-            if ($this->game->isPlayerDead($activePlayerId)) {
-                return GameEnd::class;
-            }
+        // Roll battle die (1-6)
+        $roll = rand(1, 6);
+        
+        // Calculate total strength
+        $player = $this->game->requirePirate($playerId);
+        $currentEnemy = $this->game->getCurrentBattleEnemy($playerId);
+        
+        $totalStrength = $roll;
+        $modifiers = ['battleTrack' => 0, 'item' => 0];
+        
+        if ($useBattleTrack) {
+            $modifiers['battleTrack'] = $player->battleStrength;
+            $totalStrength += $player->battleStrength;
+        }
+        
+        if ($useItem) {
+            $itemModifier = $this->game->getItemManager()->getItemBattleModifier($playerId);
+            $modifiers['item'] = $itemModifier;
+            $totalStrength += $itemModifier;
+        }
+        
+        // Compare to enemy strength
+        $outcome = $totalStrength >= $currentEnemy['strength'] ? 'win' : 'lose';
+        $revealedTokenId = null;
+        $retreatRoll = null;
+        $retreatOutcome = null;
+        
+        if ($outcome === 'win') {
+            // Win: flip enemy token
+            $this->game->getTokenManager()->flipEnemyToken($currentEnemy['id']);
+            $revealedTokenId = $currentEnemy['id'];
             
-            // Check if there are more enemies in the room
-            if ($this->game->hasEnemiesInRoom($activePlayerId)) {
-                return ""; // Stay in battle state for next enemy
-            }
-            
-            // Check if player has more action tokens
-            if ($this->game->getPlayerActionTokens($activePlayerId) > 0) {
-                return TakeActions::class;
-            } else {
-                return SkelitsRevenge::class;
+            // Check if more enemies in room
+            $remainingEnemies = $this->game->getTokenManager()->getEnemiesInRoom($currentEnemy['room_id']);
+            if (!empty($remainingEnemies)) {
+                return 'resolveBattles'; // More battles to fight
             }
         } else {
-            // Lost battle - handle retreat or continue fighting
-            if ($battleResult['retreat']) {
-                if ($this->game->getPlayerActionTokens($activePlayerId) > 0) {
-                    return TakeActions::class;
-                } else {
-                    return SkelitsRevenge::class;
-                }
-            } else {
-                return ""; // Continue fighting same enemy
+            // Lose: apply fatigue and determine retreat options
+            $fatigueGained = 1;
+            $this->game->getPirateManager()->adjustFatigue($playerId, $fatigueGained, 'battle_loss');
+            
+            if ($currentEnemy['type'] === 'guard' && $this->game->canRetreatFromGuardBattle($playerId)) {
+                $retreatRoll = rand(1, 6);
+                $retreatOutcome = $retreatRoll >= 4 ? 'success' : 'failure';
             }
         }
+        
+        // Reset battle track if used
+        if ($useBattleTrack) {
+            $player->battleStrength = 0;
+            $this->game->getPirateManager()->persistPirate($player);
+        }
+        
+        // Notify battle result
+        $this->game->notify->all("battleUpdate", clienttranslate('${player_name} fights ${enemy_type}'), [
+            "playerId" => $playerId,
+            "enemyId" => $currentEnemy['id'],
+            "outcome" => $outcome,
+            "roll" => $roll,
+            "modifiers" => $modifiers,
+            "totalStrength" => $totalStrength,
+            "enemyStrength" => $currentEnemy['strength'],
+            "fatigueGained" => $outcome === 'lose' ? $fatigueGained : 0,
+            "revealedTokenId" => $revealedTokenId,
+            "retreatRoll" => $retreatRoll,
+            "retreatOutcome" => $retreatOutcome
+        ]);
+        
+        // Return appropriate next state
+        if ($outcome === 'lose' && $retreatOutcome === 'success' && $currentEnemy['type'] === 'guard') {
+            return 'playerRetreat';
+        } elseif ($outcome === 'lose') {
+            return 'next';
+        } else {
+            return 'next';
+        }
+    }
+
+    #[PossibleAction]
+    public function retreat(): string
+    {
+        $playerId = (int)$this->game->getActivePlayerId();
+        $currentEnemy = $this->game->getCurrentBattleEnemy($playerId);
+        
+        // Validate that retreat is available (only vs Guard)
+        if ($currentEnemy['type'] !== 'guard') {
+            throw new \BgaUserException("Cannot retreat from this enemy");
+        }
+        
+        return 'playerRetreat';
     }
 }

@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Bga\Games\deadmenpax\Actions;
+namespace Bga\Games\DeadMenPax\DB\Actions;
+
+use Bga\Games\DeadMenPax\NotificationManager;
 
 abstract class ActionCommand
 {
@@ -46,28 +48,28 @@ abstract class ActionCommand
     /**
      * Executes the action.
      *
-     * @param ActionNotifier $notifier The notifier to use for sending notifications.
+     * @param NotificationManager $notifier BGA notification bridge.
      */
-    abstract public function do(ActionNotifier $notifier): void;
+    abstract public function do(NotificationManager $notifier): void;
 
     /**
      * Reloads the action.
      *
-     * @param ActionNotifier $notifier The notifier to use for sending notifications.
+     * @param NotificationManager $notifier BGA notification bridge.
      */
-    abstract public function reload(ActionNotifier $notifier): void;
+    abstract public function reload(NotificationManager $notifier): void;
 
     /**
      * Reverts the action.
      *
-     * @param ActionNotifier $notifier The notifier to use for sending notifications.
+     * @param NotificationManager $notifier BGA notification bridge.
      */
-    abstract public function undo(ActionNotifier $notifier): void;
+    abstract public function undo(NotificationManager $notifier): void;
 
     /**
      * Commits the action.
      *
-     * @param ActionNotifier $notifier The notifier to use for sending notifications.
+     * @param NotificationManager $notifier BGA notification bridge.
      */
-    abstract public function commit(ActionNotifier $notifier): void;
+    abstract public function commit(NotificationManager $notifier): void;
 }

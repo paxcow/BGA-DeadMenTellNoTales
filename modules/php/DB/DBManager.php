@@ -96,7 +96,7 @@ class DBManager
      */
     private function checkIfExists(string $primaryKey, string|int $primaryValue): bool
     {
-        $sql = "SELECT COUNT(*) AS count FROM {$this->baseTable} WHERE $primaryKey = " . $this->game->escapeStringForDB($primaryValue);
+        $sql = "SELECT COUNT(*) AS count FROM {$this->baseTable} WHERE $primaryKey = " . $this->formatValue($primaryValue);
         $this->logQuery($sql);
         
         $row = $this->game->getObjectListFromDB($sql);
@@ -142,7 +142,7 @@ class DBManager
             throw new \BgaSystemException("Primary key not defined in class {$this->baseClass}.");
         }
         
-        $sql = "SELECT * FROM {$this->baseTable} WHERE $key = " . $this->game->escapeStringForDB($keyValue);
+        $sql = "SELECT * FROM {$this->baseTable} WHERE $key = " . $this->formatValue($keyValue);
         $this->logQuery($sql);
         
         $results = $this->game->getCollectionFromDB($sql);
@@ -249,8 +249,6 @@ class DBManager
             
             $primaryValue = null;
             $columns = [];
-            $values = [];
-            $insertMode = false;
 
             foreach ($properties as $property) {
                 $column = $property->getAttributes(dbColumn::class, ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
@@ -258,34 +256,47 @@ class DBManager
                     $columnName = $column->newInstance()->name;
                     $property->setAccessible(true);
                     $value = $property->getValue($object);
-
-                    $columns[$columnName] = $this->game->escapeStringForDB($value);
+                    $columns[$columnName] = $value;
 
                     if ($columnName === $primaryKey) {
-                        $primaryValue = $columns[$columnName];
-                    } else {
-                        $values[] = "$columnName = " . $columns[$columnName];
+                        $primaryValue = $value;
                     }
                 }
             }
 
-            if ($primaryValue && $this->checkIfExists($primaryKey, $primaryValue)) {
+            if ($primaryValue !== null && $this->checkIfExists($primaryKey, $primaryValue)) {
                 // Update existing record
-                $sql = "UPDATE {$this->baseTable} SET " . implode(', ', $values) . " WHERE $primaryKey = $primaryValue";
+                $setClauses = [];
+                foreach ($columns as $columnName => $value) {
+                    if ($columnName === $primaryKey) {
+                        continue;
+                    }
+                    $setClauses[] = "$columnName = " . $this->formatValue($value);
+                }
+
+                if (empty($setClauses)) {
+                    return $primaryValue;
+                }
+
+                $sql = "UPDATE {$this->baseTable} SET " . implode(', ', $setClauses) . " WHERE $primaryKey = " . $this->formatValue($primaryValue);
                 $this->logQuery($sql);
                 $result = $this->game->DbQuery($sql);
                 $returnValue = $primaryValue;
             } else {
                 // Insert new record
-                $insertMode = true;
-                $columnNames = implode(', ', array_keys($columns));
-                $columnValues = implode(', ', array_values($columns));
-                $sql = "INSERT INTO {$this->baseTable} ($columnNames) VALUES ($columnValues)";
+                $columnNames = [];
+                $columnValues = [];
+                foreach ($columns as $columnName => $value) {
+                    $columnNames[] = $columnName;
+                    $columnValues[] = $this->formatValue($value);
+                }
+
+                $sql = "INSERT INTO {$this->baseTable} (" . implode(', ', $columnNames) . ") VALUES (" . implode(', ', $columnValues) . ")";
                 $this->logQuery($sql);
                 $result = $this->game->DbQuery($sql);
                 
                 if ($result) {
-                    $returnValue = $this->game->DbGetLastId();
+                    $returnValue = $primaryValue ?? $this->game->DbGetLastId();
                 } else {
                     $returnValue = null;
                 }
@@ -313,7 +324,7 @@ class DBManager
             }
 
             if ($keyValue && $this->checkIfExists($primaryKey, $keyValue)) {
-                $sql = "DELETE FROM {$this->baseTable} WHERE $primaryKey = " . $this->game->escapeStringForDB($keyValue);
+                $sql = "DELETE FROM {$this->baseTable} WHERE $primaryKey = " . $this->formatValue($keyValue);
                 $this->logQuery($sql);
                 $this->game->DbQuery($sql);
             }
@@ -348,5 +359,32 @@ class DBManager
         // Only log in debug mode to avoid performance impact in production
         // This can be enabled by setting a debug flag or in development environments
         // For now, we'll keep it simple and avoid logging in production
+    }
+
+    /**
+     * Formats a PHP value into a SQL-safe string.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    private function formatValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'NULL';
+        }
+
+        if (is_bool($value)) {
+            $value = $value ? '1' : '0';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string)$value;
+        }
+
+        if (is_object($value) && method_exists($value, '__toString')) {
+            $value = (string)$value;
+        }
+
+        return $this->game->escapeStringForDB((string)$value);
     }
 }

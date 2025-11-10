@@ -1,7 +1,5 @@
 <?php
 
-namespace Bga\Games\deadmenpax;
-
 // Room tile door constants (bit flags)
 // These match the RoomTile class constants
 define('DOOR_NORTH', 1);

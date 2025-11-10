@@ -9,36 +9,17 @@ use Bga\Games\DeadMenPax\Game;
 
 class GameEnd extends GameState
 {
-    /**
-     * Constructor.
-     *
-     * @param Game $game The game instance.
-     */
-    function __construct(
-        protected Game $game,
-    ) {
+    public function __construct(protected Game $game)
+    {
         parent::__construct($game,
             id: 99,
-            type: StateType::MANAGER,
-            name: "gameEnd",
-            description: "End of game",
-            action: "stGameEnd",
-            transitions: [],
+            type: StateType::GAME,
+            description: clienttranslate('Terminal state - game over')
         );
     }
 
-    /**
-     * Called when entering the game state.
-     *
-     * @return string
-     */
-    function onEnteringState(): string {
-        // Calculate final scores and determine win/loss
-        $this->game->calculateFinalScores();
-        
-        // End the game
-        $this->game->endGame();
-        
-        return "";
+    public function getArgs(): array
+    {
+        return []; // TODO: provide end-of-game summary
     }
 }

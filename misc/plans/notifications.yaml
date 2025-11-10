@@ -1,0 +1,191 @@
+# Dead Men Tell No Tales - Server-to-Client Notifications
+
+# Notifications sent to prompt the active player for an action.
+playerActions:
+  description: "Sent at the start of the TakeActions state to inform the client of all possible moves for the active player."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the active player."
+    possibleActions:
+      type: array
+      description: "A list of action keys the player can currently perform (e.g., ['walk', 'run', 'fightFire'])."
+    walkTargets:
+      type: array
+      description: "List of room IDs the player can legally walk to."
+    runTargets:
+      type: array
+      description: "List of room IDs the player can legally run to."
+    pickupableTokens:
+      type: array
+      description: "List of token IDs in the player's current room that can be picked up."
+    swappableItems:
+      type: array
+      description: "List of item card IDs available on the table to swap with."
+
+placeRoomTile:
+  description: "Sent during the SearchShip state, instructing the player to place a new room tile."
+  args:
+    tileId:
+      type: int
+      description: "The ID of the room tile to be placed."
+    possiblePlacements:
+      type: array
+      description: "A list of valid placement objects, each containing {x, y, rotation}."
+
+playerRetreat:
+  description: "Sent after a lost battle, forcing the player to choose an adjacent room to retreat to."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the player who must retreat."
+    possibleRetreats:
+      type: array
+      description: "List of room IDs the player can legally retreat to."
+
+# Notifications sent to all players to reflect a change in the game state.
+move:
+  description: "A pirate moves from one room to another."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the player moving."
+    fromRoomId:
+      type: int
+      description: "The starting room ID."
+    toRoomId:
+      type: int
+      description: "The destination room ID."
+    newFatigue:
+      type: int
+      description: "The player's new fatigue level after the move."
+
+tokenChange:
+  description: "A token is picked up from a room or dropped into a room."
+  args:
+    tokenId:
+      type: int
+      description: "The ID of the token."
+    fromLocation:
+      type: string
+      description: "The original location of the token (e.g., 'room_12', 'player_3')."
+    toLocation:
+      type: string
+      description: "The new location of the token (e.g., 'player_3', 'room_12')."
+
+fireLevelChange:
+  description: "The fire level in one or more rooms changes."
+  args:
+    changes:
+      type: array
+      description: "A list of objects, each containing {roomId, newFireLevel}."
+
+deckhandChange:
+  description: "Deckhands are added or removed from a room."
+  args:
+    changes:
+      type: array
+      description: "A list of objects, each containing {roomId, newDeckhandCount}."
+
+battleUpdate:
+  description: "Provides a complete summary of a battle round's result."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the player who fought."
+    enemyId:
+      type: int
+      description: "The ID of the Skeleton Crew or Guard."
+    outcome:
+      type: string
+      description: "The result of the battle ('win' or 'loss')."
+    roll:
+      type: int
+      description: "The number rolled on the battle die."
+    modifiers:
+      type: object
+      description: "Modifiers used in the battle (e.g., { battleTrack: 2, item: 1 })."
+    totalStrength:
+      type: int
+      description: "The player's total battle strength."
+    fatigueChange:
+      type: int
+      description: "The amount of fatigue gained (if any)."
+    revealedTokenId:
+      type: int
+      description: "The ID of the token revealed if a Skeleton Crew was defeated (optional)."
+
+skelitCardReveal:
+  description: "A Skelit's Revenge card is revealed and its effects are about to be resolved."
+  args:
+    cardId:
+      type: int
+      description: "The ID of the card."
+    effects:
+      type: object
+      description: "An object describing the card's effects (e.g., { fire: [{ color: 'red', value: 3 }], deckhands: 'add', skeletonMove: true })."
+
+explosion:
+  description: "A powder keg or room explosion occurs."
+  args:
+    type:
+      type: string
+      description: "The type of explosion ('powderKeg' or 'room')."
+    sourceRoomId:
+      type: int
+      description: "The ID of the room that exploded."
+    newExplosionTrackValue:
+      type: int
+      description: "The new position of the marker on the explosion track."
+
+playerStateChange:
+  description: "A player's core stats or cards have changed."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the affected player."
+    newFatigue:
+      type: int
+      description: "The player's new fatigue level (optional)."
+    newBattleStrength:
+      type: int
+      description: "The player's new battle track value (optional)."
+    newItemId:
+      type: int
+      description: "The ID of the player's new item card (optional)."
+
+playerDied:
+  description: "A player's pirate has died and been replaced."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the player."
+    newCharacterId:
+      type: int
+      description: "The ID of the new character card."
+    droppedTreasureId:
+      type: int
+      description: "The ID of the treasure token dropped in the room where the pirate died (optional)."
+
+lootTreasure:
+  description: "A player successfully carries a treasure off the ship."
+  args:
+    playerId:
+      type: int
+      description: "The ID of the player."
+    treasureId:
+      type: int
+      description: "The ID of the looted treasure."
+    treasuresLooted:
+      type: int
+      description: "The total number of treasures now on the dinghy."
+
+gameEnd:
+  description: "The game has ended."
+  args:
+    result:
+      type: string
+      description: "The outcome of the game ('win' or 'loss')."
+    reason:
+      type: string
+      description: "A string key for the reason (e.g., 'explosionTrackFull', 'allTreasuresLooted')."

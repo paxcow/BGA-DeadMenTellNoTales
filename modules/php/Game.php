@@ -18,16 +18,43 @@ declare(strict_types=1);
 
 namespace Bga\Games\DeadMenPax;
 
+use Bga\Games\DeadMenPax\Models\PlayerModel;
 use Bga\Games\DeadMenPax\DB\PlayerDBManager;
+use Bga\Games\DeadMenPax\DB\RoomTilesManager;
+use Bga\Games\DeadMenPax\StatsManager;
 
 class Game extends \Bga\GameFramework\Table
 {
+    private const STATE_PENDING_TILE_ID = 10;
+    private const STATE_BATTLE_CONTEXT = 12;
+
+    private const JSON_KEY_BATTLE_CONTEXT = 'BATTLE_CONTEXT_JSON';
+
     private static array $CARD_TYPES;
     private BoardManager $boardManager;
+    private RoomTilesManager $roomTilesManager;
     private PirateManager $pirateManager;
     private ItemManager $itemManager;
     private TokenManager $tokenManager;
     private PlayerDBManager $playerDBManager;
+    private StatsManager $statsManager;
+    /** @var array<int, array<string, mixed>> */
+    private array $battleContexts = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $startingRooms = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $startingRoomLookup = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $roomTiles = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $revengeCards = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $tokens = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $itemCards = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $roomTileLookup = [];
+    private bool $materialLoaded = false;
 
     /**
      * Constructor.
@@ -37,26 +64,21 @@ class Game extends \Bga\GameFramework\Table
         parent::__construct();
 
         $this->initGameStateLabels([
-            "my_first_global_variable" => 10,
-            "my_second_global_variable" => 11,
-        ]);        
+            'PENDING_TILE_ID' => self::STATE_PENDING_TILE_ID,
+            'BATTLE_CONTEXT_JSON' => self::STATE_BATTLE_CONTEXT,
+        ]);
 
-        self::$CARD_TYPES = [
-            1 => [
-                "card_name" => clienttranslate('Troll'), // ...
-            ],
-            2 => [
-                "card_name" => clienttranslate('Goblin'), // ...
-            ],
-            // ...
-        ];
+        $this->ensureMaterialLoaded();
 
         // Initialize managers
         $this->playerDBManager = new PlayerDBManager($this);
         $this->pirateManager = new PirateManager($this);
         $this->itemManager = new ItemManager($this);
         $this->tokenManager = new TokenManager($this);
-        $this->boardManager = new BoardManager($this);
+        $this->roomTilesManager = new RoomTilesManager($this, $this->getAllRoomTileDefinitions());
+        $this->boardManager = new BoardManager($this, $this->roomTilesManager);
+        $this->statsManager = new StatsManager($this);
+        $this->loadBattleContextFromDB();
 
         /* example of notification decorator.
         // automatically complete notification args when needed
@@ -75,81 +97,24 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Plays a card.
-     *
-     * @param int $card_id The ID of the card to play.
-     * @throws BgaUserException
-     */
-    public function actPlayCard(int $card_id): void
-    {
-        // Retrieve the active player ID.
-        $player_id = (int)$this->getActivePlayerId();
-
-        // check input values
-        $args = $this->argPlayerTurn();
-        $playableCardsIds = $args['playableCardsIds'];
-        if (!in_array($card_id, $playableCardsIds)) {
-            throw new \BgaUserException('Invalid card choice');
-        }
-
-        // Add your game logic to play a card here.
-        $card_name = self::$CARD_TYPES[$card_id]['card_name'];
-
-        // Notify all players about the card played.
-        $this->notify->all("cardPlayed", clienttranslate('${player_name} plays ${card_name}'), [
-            "player_id" => $player_id,
-            "player_name" => $this->getActivePlayerName(), // remove this line if you uncomment notification decorator
-            "card_name" => $card_name, // remove this line if you uncomment notification decorator
-            "card_id" => $card_id,
-            "i18n" => ['card_name'], // remove this line if you uncomment notification decorator
-        ]);
-
-        // at the end of the action, move to the next state
-        $this->gamestate->nextState("playCard");
-    }
-
-    /**
-     * Passes the turn.
-     */
-    public function actPass(): void
-    {
-        // Retrieve the active player ID.
-        $player_id = (int)$this->getActivePlayerId();
-
-        // Notify all players about the choice to pass.
-        $this->notify->all("pass", clienttranslate('${player_name} passes'), [
-            "player_id" => $player_id,
-            "player_name" => $this->getActivePlayerName(), // remove this line if you uncomment notification decorator
-        ]);
-
-        // at the end of the action, move to the next state
-        $this->gamestate->nextState("pass");
-    }
-
-    /**
-     * Gets the arguments for the player turn.
-     *
-     * @return array
-     */
-    public function argPlayerTurn(): array
-    {
-        // Get some values from the current game situation from the database.
-
-        return [
-            "playableCardsIds" => [1, 2],
-        ];
-    }
-
-    /**
      * Computes and returns the current game progression.
      *
      * @return int
      */
     public function getGameProgression()
     {
-        // TODO: compute and return the game progression
-
-        return 0;
+        // Progress = weighted average of net looted treasures vs. explosion clock
+        $target       = (int) $this->getGameStateValue('TARGET_TREASURES');
+        $looted       = (int) $this->statsManager->getTableStat('treasures_looted');
+        $destroyed    = (int) $this->statsManager->getTableStat('treasures_destroyed');
+        $maxExplodes  = (int) $this->getGameStateValue('MAX_EXPLOSION_TRACK');
+        $explosion    = (int) $this->getGameStateValue('explosion_track');
+        // clamp ratios to [0,1]
+        $pLoot = $target > 0 ? max(0, min(1, ($looted - $destroyed) / $target)) : 0;
+        $pSafe = $maxExplodes > 0 ? max(0, min(1, 1 - $explosion / $maxExplodes)) : 0;
+        // weights: 70% looting, 30% safety
+        $progress = 0.7 * $pLoot + 0.3 * $pSafe;
+        return (int) round(100 * $progress);
     }
 
     /**
@@ -247,45 +212,491 @@ class Game extends \Bga\GameFramework\Table
         $gameinfos = $this->getGameinfos();
         $default_colors = $gameinfos['player_colors'];
 
-        foreach ($players as $player_id => $player) {
-            // Now you can access both $player_id and $player array
-            $query_values[] = vsprintf("('%s', '%s', '%s', '%s', '%s')", [
-                $player_id,
-                array_shift($default_colors),
-                $player["player_canal"],
-                addslashes($player["player_name"]),
-                addslashes($player["player_avatar"]),
-            ]);
-        }
-
-        // Create players based on generic information.
-        static::DbQuery(
-            sprintf(
-                "INSERT INTO player (player_id, player_color, player_canal, player_name, player_avatar) VALUES %s",
-                implode(",", $query_values)
-            )
-        );
+        // Create players in the database using the manager
+        $this->playerDBManager->createPlayers($players, $default_colors);
 
         $this->reattributeColorsBasedOnPreferences($players, $gameinfos["player_colors"]);
         $this->reloadPlayersBasicInfos();
 
         // Init global values with their initial values.
         $this->setGameStateInitialValue("my_first_global_variable", 0);
+        $this->setGameStateInitialValue('PENDING_TILE_ID', 0);
+        $this->setGameStateInitialValue('BATTLE_CONTEXT_JSON', 0);
+        $this->initializePersistentStateStores();
+        $this->rebuildRuntimeCaches();
 
+        $this->roomTilesManager->initializeTiles();
+        $this->tokenManager->setupTokens($this->tokens);
+
+        $this->initializeGame();
+    }
+
+    /**
+     * Initializes the game.
+     */
+    public function initializeGame(): void
+    {
         // Setup the initial game situation here.
+        $this->ensureMaterialLoaded();
         $this->itemManager->setupItemCards();
         $itemAssignments = $this->itemManager->dealStartingItemCards();
         foreach ($itemAssignments as $playerId => $itemId) {
             $this->pirateManager->assignItem($playerId, $itemId);
         }
-
-        // Include token definitions from material.inc.php
-        include __DIR__ . '/material.inc.php';
-        $this->tokenManager->setupTokens($tokens);
         // Additional setup for board, etc. will go here
 
         // Activate first player once everything has been initialized and ready.
         $this->activeNextPlayer();
+    }
+
+    /**
+     * Forces every manager to rebuild its cached view of database rows.
+     */
+    private function rebuildRuntimeCaches(): void
+    {
+        $this->pirateManager->reload();
+        $this->itemManager->reload();
+        $this->tokenManager->reload();
+    }
+
+    /**
+     * Ensures material definitions are loaded exactly once.
+     */
+    private function ensureMaterialLoaded(): void
+    {
+        if ($this->materialLoaded) {
+            return;
+        }
+
+        require __DIR__ . '/material.inc.php';
+        $this->assignRoomTileIds();
+        $this->assignStartingRoomIds();
+        $this->materialLoaded = true;
+    }
+
+    /**
+     * Assigns deterministic IDs to room tiles and builds lookup maps.
+     */
+    private function assignRoomTileIds(): void
+    {
+        $this->roomTileLookup = [];
+        foreach ($this->roomTiles as $index => $definition) {
+            if (!isset($definition['id'])) {
+                $definition['id'] = 100 + $index;
+            }
+
+            $this->roomTiles[$index] = $definition;
+            $this->roomTileLookup[$definition['id']] = $definition;
+        }
+    }
+
+    /**
+     * Assigns deterministic IDs to starting room tiles.
+     */
+    private function assignStartingRoomIds(): void
+    {
+        $this->startingRoomLookup = [];
+        foreach ($this->startingRooms as $index => $definition) {
+            if (!isset($definition['id'])) {
+                $definition['id'] = 1 + $index;
+            }
+
+            $this->startingRooms[$index] = $definition;
+            $this->startingRoomLookup[$definition['id']] = $definition;
+        }
+    }
+
+    /**
+     * Returns all room tile definitions keyed by tile id.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public function getAllRoomTileDefinitions(): array
+    {
+        $this->ensureMaterialLoaded();
+        $definitions = [];
+
+        foreach ($this->startingRooms as $definition) {
+            $definitions[$definition['id']] = $definition;
+        }
+
+        foreach ($this->roomTiles as $definition) {
+            $definitions[$definition['id']] = $definition;
+        }
+
+        return $definitions;
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    public function getTokenDefinitions(): array
+    {
+        $this->ensureMaterialLoaded();
+        return $this->tokens;
+    }
+
+
+    /**
+     * Draws the next room tile from the deck and persists the pointer.
+     *
+     * @return int
+     */
+    public function drawNextRoomTile(): int
+    {
+        $this->ensureMaterialLoaded();
+        $tileId = $this->roomTilesManager->drawNextTileId();
+        $this->setGameStateValue('PENDING_TILE_ID', $tileId);
+
+        return $tileId;
+    }
+
+    /**
+     * Gets the tile ID that is currently pending placement.
+     *
+     * @return int
+     */
+    public function getNextTileToPlace(): int
+    {
+        $tileId = (int) $this->getGameStateValue('PENDING_TILE_ID');
+        if ($tileId === 0) {
+            throw new \BgaSystemException('Unable to determine pending room tile.');
+        }
+
+        return $tileId;
+    }
+
+    /**
+     * Gets the material definition for a tile ID.
+     *
+     * @param int $tileId
+     * @return array
+     */
+    public function getTileData(int $tileId): array
+    {
+        $this->ensureMaterialLoaded();
+
+        if (isset($this->roomTileLookup[$tileId])) {
+            return $this->roomTileLookup[$tileId];
+        }
+
+        if (isset($this->startingRoomLookup[$tileId])) {
+            return $this->startingRoomLookup[$tileId];
+        }
+
+        throw new \BgaSystemException("Unknown tile id {$tileId}.");
+    }
+
+    /**
+     * Places a random token when a new room is added.
+     *
+     * @param int $tileId
+     * @return string|null
+     */
+    public function placeTokenForNewRoom(int $tileId): ?string
+    {
+        return $this->tokenManager->placeRandomTokenInRoom($tileId);
+    }
+
+    /**
+     * Checks whether the dinghy/second exit should be placed.
+     * Placeholder for future detailed implementation.
+     */
+    public function checkForSecondExit(): void
+    {
+        // TODO: Implement dinghy placement rules.
+    }
+
+    /**
+     * Loads persisted battle context rows into memory.
+     */
+    public function loadBattleContextFromDB(): void
+    {
+        if (!isset($this->playerDBManager)) {
+            $this->battleContexts = [];
+            return;
+        }
+
+        $this->battleContexts = [];
+        $players = $this->playerDBManager->getAllObjects();
+        foreach ($players as $player) {
+            $context = $this->buildBattleContextFromPlayer($player);
+            if ($context !== null) {
+                $this->battleContexts[$player->id] = $context;
+            }
+        }
+
+        if (!empty($this->battleContexts)) {
+            $this->storeJsonState(self::JSON_KEY_BATTLE_CONTEXT, $this->battleContexts);
+        } else {
+            $this->battleContexts = $this->loadJsonState(self::JSON_KEY_BATTLE_CONTEXT);
+        }
+    }
+
+    /**
+     * Persists a player's battle context to both DB and JSON cache.
+     *
+     * @param int $playerId
+     * @param array|null $context
+     */
+    public function persistBattleContext(int $playerId, ?array $context): void
+    {
+        $player = $this->requirePirate($playerId);
+
+        if ($context === null) {
+            $player->currentEnemyTokenId = null;
+            $player->currentBattleRoomId = null;
+            $player->battleState = null;
+            unset($this->battleContexts[$playerId]);
+        } else {
+            $player->currentEnemyTokenId = $context['enemyTokenId'] ?? null;
+            $player->currentBattleRoomId = $context['roomId'] ?? null;
+            $player->battleState = $context['state'] ?? null;
+
+            if ($player->currentEnemyTokenId === '') {
+                $player->currentEnemyTokenId = null;
+            }
+            if ($player->battleState === '') {
+                $player->battleState = null;
+            }
+
+            $filtered = array_filter([
+                'enemyTokenId' => $player->currentEnemyTokenId,
+                'roomId' => $player->currentBattleRoomId,
+                'state' => $player->battleState,
+            ], static fn($value) => $value !== null);
+
+            if (empty($filtered)) {
+                unset($this->battleContexts[$playerId]);
+            } else {
+                $this->battleContexts[$playerId] = $filtered;
+            }
+        }
+
+        $this->pirateManager->persistPirate($player);
+        $this->storeJsonState(self::JSON_KEY_BATTLE_CONTEXT, $this->battleContexts);
+    }
+
+    /**
+     * Gets the current battle context for a player.
+     *
+     * @param int $playerId
+     * @return array<string,mixed>|null
+     */
+    public function getBattleContext(int $playerId): ?array
+    {
+        return $this->battleContexts[$playerId] ?? null;
+    }
+
+    /**
+     * Returns enemy tokens in the active player's current room.
+     *
+     * @param int $playerId
+     * @return array<int, array<string, mixed>>
+     */
+    public function getEnemiesInCurrentRoom(int $playerId): array
+    {
+        $roomId = $this->pirateManager->getPirateRoom($playerId);
+        if ($roomId === null) {
+            return [];
+        }
+
+        return $this->tokenManager->getEnemiesInRoomById($roomId);
+    }
+
+    /**
+     * Persists the current battle context for a player.
+     *
+     * @param int $playerId
+     * @param array $context
+     */
+    public function setBattleContext(int $playerId, array $context): void
+    {
+        $this->persistBattleContext($playerId, $context);
+    }
+
+    /**
+     * Clears a player's stored battle context.
+     */
+    public function clearBattleContext(int $playerId): void
+    {
+        $this->persistBattleContext($playerId, null);
+    }
+
+    /**
+     * Describes the current enemy stored in battle context.
+     *
+     * @param int $playerId
+     * @return array<string, mixed>|null
+     */
+    public function getCurrentBattleEnemy(int $playerId): ?array
+    {
+        $context = $this->getBattleContext($playerId);
+        if ($context === null || empty($context['enemyTokenId'])) {
+            return null;
+        }
+
+        return $this->tokenManager->describeEnemyToken($context['enemyTokenId']);
+    }
+
+    /**
+     * Records the available room information before prompting for selection.
+     */
+    public function initializeEnemySelection(int $playerId): void
+    {
+        $enemies = $this->getEnemiesInCurrentRoom($playerId);
+        if (empty($enemies)) {
+            $this->clearBattleContext($playerId);
+            return;
+        }
+
+        $context = $this->getBattleContext($playerId) ?? [];
+        $context['roomId'] = $enemies[0]['room_id'];
+        unset($context['enemyTokenId']);
+        $this->persistBattleContext($playerId, $context);
+    }
+
+    /**
+     * Sets the enemy token to fight in the player's battle context.
+     */
+    public function setCurrentBattleEnemy(int $playerId, string $tokenId): void
+    {
+        $context = $this->getBattleContext($playerId) ?? [];
+        $context['enemyTokenId'] = $tokenId;
+
+        if (empty($context['roomId'])) {
+            $enemy = $this->tokenManager->describeEnemyToken($tokenId);
+            if ($enemy !== null) {
+                $context['roomId'] = $enemy['room_id'];
+            }
+        }
+
+        $this->persistBattleContext($playerId, $context);
+    }
+
+    /**
+     * Ensures a battle context exists for the player entering the Battle state.
+     */
+    public function initializeCurrentBattle(int $playerId): void
+    {
+        $context = $this->getBattleContext($playerId);
+        if ($context !== null && !empty($context['enemyTokenId'])) {
+            return;
+        }
+
+        $enemies = $this->getEnemiesInCurrentRoom($playerId);
+        if (empty($enemies)) {
+            $this->clearBattleContext($playerId);
+            return;
+        }
+
+        $enemy = $enemies[0];
+        $this->setBattleContext($playerId, [
+            'enemyTokenId' => $enemy['id'],
+            'roomId' => $enemy['room_id'],
+        ]);
+    }
+
+    /**
+     * Initializes JSON-backed persistent stores.
+     */
+    private function initializePersistentStateStores(): void
+    {
+        $this->battleContexts = [];
+        $this->storeJsonState(self::JSON_KEY_BATTLE_CONTEXT, []);
+    }
+
+    /**
+     * Creates a battle context array from a player model.
+     *
+     * @param PlayerModel $player
+     * @return array<string,mixed>|null
+     */
+    private function buildBattleContextFromPlayer(PlayerModel $player): ?array
+    {
+        if (empty($player->currentEnemyTokenId) || $player->currentBattleRoomId === null) {
+            return null;
+        }
+
+        $context = [
+            'enemyTokenId' => $player->currentEnemyTokenId,
+            'roomId' => $player->currentBattleRoomId,
+        ];
+
+        if (!empty($player->battleState)) {
+            $context['state'] = $player->battleState;
+        }
+
+        return $context;
+    }
+
+    /**
+     * Loads a JSON blob from the game_state helper table.
+     *
+     * @param string $key
+     * @return array
+     */
+    private function loadJsonState(string $key): array
+    {
+        $keyEscaped = $this->escapeStringForDB($key);
+        $row = $this->getObjectFromDB("SELECT state_value FROM game_state WHERE state_key = {$keyEscaped}");
+        if (empty($row)) {
+            return [];
+        }
+
+        $decoded = json_decode($row['state_value'], true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Stores a JSON blob into the helper table.
+     *
+     * @param string $key
+     * @param array $value
+     */
+    private function storeJsonState(string $key, array $value): void
+    {
+        $json = json_encode($value);
+        $keyEscaped = $this->escapeStringForDB($key);
+        $valueEscaped = $this->escapeStringForDB($json);
+        $sql = "INSERT INTO game_state (state_key, state_value)
+                VALUES ({$keyEscaped}, {$valueEscaped})
+                ON DUPLICATE KEY UPDATE state_value = {$valueEscaped}";
+        $this->DbQuery($sql);
+    }
+
+    /**
+     * Stores unused action tokens for a player.
+     */
+    public function storePassedTokens(int $playerId, int $count): void
+    {
+        $this->pirateManager->setExtraActions($playerId, max(0, $count));
+    }
+
+    /**
+     * Gets the number of stored passed tokens for a player without mutating state.
+     */
+    public function getPassedTokensForPlayer(int $playerId): int
+    {
+        return $this->pirateManager->getExtraActions($playerId);
+    }
+
+    /**
+     * Consumes and clears passed tokens for a player.
+     */
+    public function consumePassedTokens(int $playerId): int
+    {
+        $count = $this->pirateManager->getExtraActions($playerId);
+        $this->pirateManager->setExtraActions($playerId, 0);
+        return $count;
+    }
+
+    /**
+     * Clears stored passed tokens for a player.
+     */
+    public function clearPassedTokens(int $playerId): void
+    {
+        $this->pirateManager->setExtraActions($playerId, 0);
     }
 
     /**
@@ -318,7 +729,7 @@ class Game extends \Bga\GameFramework\Table
             return;
         }
 
-        throw new \feException("Zombie mode not supported at this game state: \"{$state_name}\".");
+        throw new \BgaSystemException("Zombie mode not supported at this game state: \"{$state_name}\".");
     }
 
     /**
@@ -333,21 +744,35 @@ class Game extends \Bga\GameFramework\Table
     {
         $playerId = (int)$this->getActivePlayerId();
         
-        // Create room tile from material data (you would have this predefined)
-        $tileData = $this->getTileData($tileId);
-        $tile = new RoomTile(
-            $tileId,
-            $tileData['doors'],
-            $tileData['color'],
-            $tileData['pips'],
-            $tileData['has_powder_keg'] ?? false,
-            $tileData['has_trapdoor'] ?? false
-        );
+        $tile = $this->roomTilesManager->getTile($tileId);
+        if ($tile === null) {
+            $tileData = $this->getTileData($tileId);
+            $tile = new RoomTile(
+                $tileId,
+                $tileData['doors'],
+                $tileData['color'],
+                $tileData['pips'],
+                $tileData['has_powder_keg'] ?? false,
+                $tileData['has_trapdoor'] ?? false,
+                $tileData['is_starting_tile'] ?? false,
+                0,
+                $tileData['tile_type'] ?? 'room'
+            );
+        }
         
         // Try to place the tile with specified orientation
         if (!$this->boardManager->placeTile($tile, $x, $y, $orientation)) {
             throw new \BgaUserException("Cannot place tile at this position with this orientation");
         }
+
+        $deckhandBefore = $tile->getDeckhandCount();
+        if ($tile->hasTrapdoor()) {
+            $tile->addDeckhands(1);
+            $this->boardManager->saveToDatabase($tile);
+        }
+
+        $tokenId = $this->placeTokenForNewRoom($tileId);
+        $this->checkForSecondExit();
         
         // Notify all players
         $this->notify->all("tilePlaced", clienttranslate('${player_name} places a new room tile'), [
@@ -356,8 +781,13 @@ class Game extends \Bga\GameFramework\Table
             "tile_id" => $tileId,
             "x" => $x,
             "y" => $y,
-            "orientation" => $orientation
+            "orientation" => $orientation,
+            "trapdoor" => $tile->hasTrapdoor(),
+            "deckhands_added" => $tile->getDeckhandCount() - $deckhandBefore,
+            "token_id" => $tokenId
         ]);
+
+        $this->setGameStateValue('PENDING_TILE_ID', 0);
     }
     
     
@@ -484,72 +914,25 @@ class Game extends \Bga\GameFramework\Table
      */
     public function getValidPlacements(int $tileId): array
     {
-        $tileData = $this->getTileData($tileId);
-        $tile = new RoomTile(
-            $tileId,
-            $tileData['doors'],
-            $tileData['color'],
-            $tileData['pips'],
-            $tileData['has_powder_keg'] ?? false,
-            $tileData['has_trapdoor'] ?? false
-        );
-        
+        $tile = $this->roomTilesManager->getTile($tileId);
+        if ($tile === null) {
+            $tileData = $this->getTileData($tileId);
+            $tile = new RoomTile(
+                $tileId,
+                $tileData['doors'],
+                $tileData['color'],
+                $tileData['pips'],
+                $tileData['has_powder_keg'] ?? false,
+                $tileData['has_trapdoor'] ?? false,
+                $tileData['is_starting_tile'] ?? false,
+                0,
+                $tileData['tile_type'] ?? 'room'
+            );
+        }
+
         return $this->boardManager->getValidPlacementPositions($tile);
     }
     
-    /**
-     * Handles effects when a player enters a tile.
-     *
-     * @param int $playerId The ID of the player.
-     * @param RoomTile $tile The tile entered.
-     */
-    private function handleTileEffects(int $playerId, RoomTile $tile): void
-    {
-        // Fire damage
-        if ($tile->getFireLevel() > 0) {
-            $this->increaseFatigue($playerId, $tile->getFireLevel());
-        }
-        
-        // Other tile effects can be added here
-    }
-    
-    /**
-     * Gets tile data from `material.inc.php`.
-     *
-     * @param int $tileId The ID of the tile.
-     * @return array
-     */
-    private function getTileData(int $tileId): array
-    {
-        // This would be replaced with actual tile data from your material.inc.php or database
-        return [
-            'doors' => RoomTile::DOOR_NORTH | RoomTile::DOOR_SOUTH,
-            'color' => RoomTile::COLOR_RED,
-            'pips' => 3,
-            'has_powder_keg' => false,
-            'has_trapdoor' => false
-        ];
-    }
-    
-    /**
-     * Increases a player's fatigue.
-     *
-     * @param int $playerId The ID of the player.
-     * @param int $amount The amount to increase fatigue by.
-     */
-    private function increaseFatigue(int $playerId, int $amount): void
-    {
-        $player = $this->playerDBManager->createObjectFromDB($playerId);
-        $player->fatigue += $amount;
-        $this->playerDBManager->saveObjectToDB($player);
-        
-        $this->notify->all("fatigueChanged", clienttranslate('${player_name}\'s fatigue increases'), [
-            "player_id" => $playerId,
-            "player_name" => $this->getPlayerNameById($playerId),
-            "amount" => $amount
-        ]);
-    }
-
     /**
      * Jumps to a specific game state for debugging.
      *
@@ -557,6 +940,50 @@ class Game extends \Bga\GameFramework\Table
      */
     public function debug_goToState(int $state = 3) {
         $this->gamestate->jumpToState($state);
+    }
+
+    // --- Manager Getters for IDE and visibility ---
+    public function getBoardManager(): BoardManager
+    {
+        return $this->boardManager;
+    }
+
+    public function getRoomTilesManager(): RoomTilesManager
+    {
+        return $this->roomTilesManager;
+    }
+
+    /**
+     * Helper used by states to fetch cached pirate data without hitting the DB.
+     */
+    public function requirePirate(int $playerId): PlayerModel
+    {
+        $pirate = $this->pirateManager->getPirate($playerId);
+        if ($pirate === null) {
+            throw new \BgaSystemException("Unable to locate pirate {$playerId} in cache.");
+        }
+
+        return $pirate;
+    }
+
+    public function getPirateManager(): PirateManager
+    {
+        return $this->pirateManager;
+    }
+
+    public function getItemManager(): ItemManager
+    {
+        return $this->itemManager;
+    }
+
+    public function getTokenManager(): TokenManager
+    {
+        return $this->tokenManager;
+    }
+
+    public function getPlayerDBManager(): PlayerDBManager
+    {
+        return $this->playerDBManager;
     }
 
     /*

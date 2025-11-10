@@ -13,38 +13,6 @@
 	"emmet.syntaxProfiles": {
 		"tpl": "html"
 	},
-	"json.schemas": [
-		{
-			"fileMatch": [
-				"**/gameoptions.json*"
-			],
-			"url": "./node_modules/bga-ts-template/schema/gameoptions.schema.json"
-		},
-		{
-			"fileMatch": [
-				"**/gamepreferences.json*"
-			],
-			"url": "./node_modules/bga-ts-template/schema/gamepreferences.schema.json"
-		},
-		{
-			"fileMatch": [
-				"**/stats.json*"
-			],
-			"url": "./node_modules/bga-ts-template/schema/stats.schema.json"
-		},
-		{
-			"fileMatch": [
-				"**/gamestates.json*"
-			],
-			"url": "./node_modules/bga-ts-template/schema/gamestates.schema.json"
-		},
-		{
-			"fileMatch": [
-				"**/gameinfos.json*"
-			],
-			"url": "./node_modules/bga-ts-template/schema/gameinfos.schema.json"
-		}
-	],
 	"emeraldwalk.runonsave": {
 		"commands": [
 			{
@@ -58,5 +26,6 @@
 				"cmd": "npm run build:scss"
 			}
 		]
-	}
+	},
+	  "chatgpt.preferWsl": true
 }

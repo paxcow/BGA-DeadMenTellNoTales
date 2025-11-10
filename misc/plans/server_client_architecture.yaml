@@ -1,0 +1,1541 @@
+# Dead Men Tell No Tales - Server-Client Architecture
+# Complete documentation of all interactions between server (PHP) and client (TypeScript)
+
+# ==============================================================================
+# ARCHITECTURE OVERVIEW
+# ==============================================================================
+
+architecture_principles:
+  data_flow:
+    description: "BGA uses a unidirectional data flow pattern"
+    pattern: |
+      Client UI → Player Action → Server Validation → State Change → 
+      Server Notification → Client Update → UI Refresh
+      
+  notification_system:
+    description: "Server pushes state changes to all clients via notifications"
+    types:
+      - "Targeted notifications (to specific player)"
+      - "Broadcast notifications (to all players)"
+      - "Private notifications (visible data varies by player)"
+      
+  state_management:
+    server_authority: "Server is source of truth for game state"
+    client_responsibility: "Client maintains visual representation only"
+    synchronization: "Notifications keep all clients synchronized"
+
+# ==============================================================================
+# CLIENT-TO-SERVER ENTRY POINTS (Player Actions)
+# ==============================================================================
+# These are PHP methods annotated with #[PossibleAction] that clients can call
+# Format: actionName(params) in JavaScript becomes actActionName($params) in PHP
+
+client_actions:
+  
+  # --------------------------------------------------------------------------
+  # SEARCH SHIP STATE - Room Tile Placement
+  # --------------------------------------------------------------------------
+  place_tile:
+    state: SearchShip
+    php_method: "actPlaceTile(int $tileId, int $x, int $y, int $orientation)"
+    javascript_call: "this.bgaPerformAction('placeTile', { tileId, x, y, orientation })"
+    
+    description: "Player places a room tile on the board"
+    
+    client_parameters:
+      tileId:
+        type: int
+        description: "ID of the tile to place"
+        validation: "Must match tile provided in state args"
+        
+      x:
+        type: int
+        description: "X coordinate on board grid"
+        validation: "Must be valid placement position"
+        
+      y:
+        type: int
+        description: "Y coordinate on board grid"
+        validation: "Must be valid placement position"
+        
+      orientation:
+        type: int
+        description: "Rotation of tile (0, 90, 180, 270)"
+        validation: "Must be one of RoomTile::ORIENTATION_* constants"
+        
+    server_validation:
+      - "Verify player is active player"
+      - "Verify tileId matches current tile to place"
+      - "Verify (x, y, orientation) is in valid placements list"
+      - "Check doors align with adjacent tiles"
+      
+    server_side_effects:
+      - "Place tile in BoardManager"
+      - "Roll fire die and set initial fire level"
+      - "Draw token from bag"
+      - "Place token on tile (Guard/Skeleton Crew/Trapdoor)"
+      - "If last tile with extra door: place Dinghy"
+      
+    notifications_sent:
+      - notification: tilePlaced
+        recipients: all_players
+        data:
+          playerId: int
+          tileId: int
+          x: int
+          y: int
+          orientation: int
+          fireLevel: int
+          tokenId: int
+          tokenType: string
+          hasDinghy: bool
+          
+    state_transition: "TakeActions"
+    
+    frontend_handling:
+      on_success:
+        - "Animate tile placement"
+        - "Display fire die on tile"
+        - "Display token on tile"
+        - "Update board boundaries"
+        - "Enable action selection UI"
+        
+      on_error:
+        - "Show error message"
+        - "Keep tile selection UI active"
+
+  # --------------------------------------------------------------------------
+  # TAKE ACTIONS STATE - Player Actions
+  # --------------------------------------------------------------------------
+  walk:
+    state: TakeActions
+    php_method: "walk(int $roomId): string"
+    javascript_call: "this.bgaPerformAction('walk', { roomId })"
+    
+    description: "Move pirate to adjacent room (costs 1 action token)"
+    
+    client_parameters:
+      roomId:
+        type: int
+        description: "ID of destination room"
+        validation: "Must be adjacent through door and in walkTargets list"
+        
+    server_validation:
+      - "Verify player has action tokens remaining"
+      - "Verify destination is adjacent through door"
+      - "Verify player can enter room (fatigue restrictions)"
+      - "Verify room is not exploded"
+      
+    server_side_effects:
+      - "Move pirate to new room"
+      - "Decrement action tokens"
+      - "Calculate and apply fatigue (fireLevel difference, or full if carrying treasure)"
+      - "Check for pirate death from fatigue"
+      - "Check for enemies in room"
+      
+    notifications_sent:
+      - notification: move
+        recipients: all_players
+        data:
+          playerId: int
+          fromRoomId: int
+          toRoomId: int
+          actionTokensRemaining: int
+          
+      - notification: fatigueChange
+        recipients: all_players
+        data:
+          playerId: int
+          oldFatigue: int
+          newFatigue: int
+          reason: string
+          
+      - notification: pirateDied
+        recipients: all_players
+        condition: "if fatigue reaches death threshold"
+        data:
+          playerId: int
+          roomId: int
+          newCharacterId: int
+          droppedTokens: array
+          
+    state_transition: "ResolveBattles if enemies present, else stay in TakeActions"
+    
+    frontend_handling:
+      on_success:
+        - "Animate pirate movement"
+        - "Update fatigue display"
+        - "Update action tokens display"
+        - "If enemies: highlight battle UI"
+        - "If death: show death/respawn animation"
+
+  run:
+    state: TakeActions
+    php_method: "run(int $roomId): string"
+    javascript_call: "this.bgaPerformAction('run', { roomId })"
+    
+    description: "Move pirate TWO rooms (costs 1 action token + 2 fatigue)"
+    
+    client_parameters:
+      roomId:
+        type: int
+        description: "ID of final destination room (2 rooms away)"
+        validation: "Must be in runTargets list"
+        
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify path exists through 2 rooms"
+      - "Verify player can survive fatigue from both rooms + 2 extra"
+      - "Verify both rooms accessible (not exploded)"
+      
+    server_side_effects:
+      - "Move pirate through intermediate room"
+      - "Apply fatigue from intermediate room"
+      - "Move pirate to final room"
+      - "Apply fatigue from final room"
+      - "Apply +2 run fatigue"
+      - "Decrement action tokens"
+      - "Check for enemies in final room"
+      
+    notifications_sent:
+      - notification: move
+        recipients: all_players
+        count: 2
+        description: "One for each room traversed"
+        
+      - notification: fatigueChange
+        recipients: all_players
+        
+    state_transition: "ResolveBattles if enemies, else TakeActions"
+
+  fight_fire:
+    state: TakeActions
+    php_method: "fightFire(): string"
+    javascript_call: "this.bgaPerformAction('fightFire', {})"
+    
+    description: "Decrease fire in current room by 1 (costs 1 action token)"
+    
+    client_parameters: none
+    
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify current room has fire (level > 0)"
+      
+    server_side_effects:
+      - "Decrease fire level by 1"
+      - "Remove fire die if level reaches 0"
+      - "Decrement action tokens"
+      
+    notifications_sent:
+      - notification: fireLevelChange
+        recipients: all_players
+        data:
+          roomId: int
+          oldLevel: int
+          newLevel: int
+          
+    state_transition: "TakeActions"
+
+  eliminate_deckhand:
+    state: TakeActions
+    php_method: "eliminateDeckhand(int $roomId): string"
+    javascript_call: "this.bgaPerformAction('eliminateDeckhand', { roomId })"
+    
+    description: "Remove one deckhand from current or adjacent room (costs 1 action token)"
+    
+    client_parameters:
+      roomId:
+        type: int
+        description: "Room to remove deckhand from"
+        validation: "Must be current room or adjacent through door"
+        
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify room has deckhands"
+      - "Verify room is current or adjacent"
+      
+    server_side_effects:
+      - "Remove one deckhand from room"
+      - "Return deckhand to supply"
+      - "Decrement action tokens"
+      
+    notifications_sent:
+      - notification: deckhandChange
+        recipients: all_players
+        data:
+          roomId: int
+          oldCount: int
+          newCount: int
+
+  pickup_token:
+    state: TakeActions
+    php_method: "pickupToken(int $tokenId): string"
+    javascript_call: "this.bgaPerformAction('pickupToken', { tokenId })"
+    
+    description: "Pick up token from current room (costs 1 action token)"
+    
+    client_parameters:
+      tokenId:
+        type: int
+        description: "ID of token to pick up"
+        validation: "Must be in pickupableTokens list"
+        
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify token is in current room"
+      - "Verify less than 2 deckhands in room"
+      - "Verify not already carrying treasure if token is treasure"
+      
+    server_side_effects:
+      - "Move token from room to player inventory"
+      - "Decrement action tokens"
+      - "If treasure: restrict available actions"
+      
+    notifications_sent:
+      - notification: tokenChange
+        recipients: all_players
+        data:
+          tokenId: int
+          fromLocation: string
+          toLocation: string
+          playerId: int
+          
+    frontend_handling:
+      on_success:
+        - "Animate token pickup"
+        - "Update player inventory display"
+        - "If treasure: update available actions UI"
+
+  drop_token:
+    state: TakeActions
+    php_method: "dropToken(int $tokenId): string"
+    javascript_call: "this.bgaPerformAction('dropToken', { tokenId })"
+    
+    description: "Drop token in current room (costs 0 action tokens)"
+    
+    client_parameters:
+      tokenId:
+        type: int
+        description: "ID of token to drop"
+        
+    server_validation:
+      - "Verify player has token"
+      
+    server_side_effects:
+      - "Move token from player to current room"
+      - "If treasure: restore full action options"
+      
+    notifications_sent:
+      - notification: tokenChange
+        recipients: all_players
+
+  rest:
+    state: TakeActions
+    php_method: "rest(): string"
+    javascript_call: "this.bgaPerformAction('rest', {})"
+    
+    description: "Reduce fatigue by 2 (costs 1 action token)"
+    
+    server_validation:
+      - "Verify player has action tokens"
+      
+    server_side_effects:
+      - "Decrease fatigue by 2 (minimum 0)"
+      - "Decrement action tokens"
+      
+    notifications_sent:
+      - notification: fatigueChange
+        recipients: all_players
+
+  increase_battle_strength:
+    state: TakeActions
+    php_method: "increaseBattleStrength(): string"
+    javascript_call: "this.bgaPerformAction('increaseBattleStrength', {})"
+    
+    description: "Move battle token up 1 space (costs 1 action token, max +4)"
+    
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify battle track not at maximum"
+      
+    server_side_effects:
+      - "Increment battle track position"
+      - "Decrement action tokens"
+      
+    notifications_sent:
+      - notification: battleTrackChange
+        recipients: all_players
+        data:
+          playerId: int
+          oldPosition: int
+          newPosition: int
+
+  swap_item:
+    state: TakeActions
+    php_method: "swapItem(int $itemId, int $sourcePlayerId): string"
+    javascript_call: "this.bgaPerformAction('swapItem', { itemId, sourcePlayerId })"
+    
+    description: "Take new item card (costs 1 action token)"
+    
+    client_parameters:
+      itemId:
+        type: int
+        description: "ID of item to take"
+        validation: "Must be available on table or from another player"
+        
+      sourcePlayerId:
+        type: int
+        description: "ID of player to take from, or 0 for table"
+        optional: true
+        
+    server_validation:
+      - "Verify player has action tokens"
+      - "Verify item is available"
+      - "If from player: verify that player has the item"
+      
+    server_side_effects:
+      - "Place old item on table or give to another player"
+      - "Assign new item to active player"
+      - "Decrement action tokens"
+      - "If taken from player: store originalActivePlayerId"
+      
+    notifications_sent:
+      - notification: itemSwap
+        recipients: all_players
+        data:
+          playerId: int
+          oldItemId: int
+          newItemId: int
+          itemPlacedOn: string
+          
+    state_transition: "ItemSwapChoice if taken from player, else TakeActions"
+
+  exit_ship:
+    state: TakeActions
+    php_method: "exitShip(): string"
+    javascript_call: "this.bgaPerformAction('exitShip', {})"
+    
+    description: "Exit ship through entrance or dinghy (ends turn, may loot treasure)"
+    
+    server_validation:
+      - "Verify player is at exit location"
+      
+    server_side_effects:
+      - "If carrying treasure: place on dinghy, increment treasures looted"
+      - "Remove pirate from board"
+      - "Reduce fatigue by half (round up)"
+      - "Store unused action tokens for next player"
+      - "Check win condition"
+      
+    notifications_sent:
+      - notification: exitShip
+        recipients: all_players
+        data:
+          playerId: int
+          treasureLooted: bool
+          treasureId: int
+          totalTreasuresLooted: int
+          fatigueReduced: int
+          tokensToPass: int
+          
+      - notification: gameEnd
+        recipients: all_players
+        condition: "if win condition met"
+        data:
+          result: "win"
+          reason: string
+          
+    state_transition: "GameEnd if won, else SkelitsRevenge"
+
+  pass_turn:
+    state: TakeActions
+    php_method: "pass(): string"
+    javascript_call: "this.bgaPerformAction('pass', {})"
+    
+    description: "End turn early, passing remaining tokens"
+    
+    server_side_effects:
+      - "Store unused action tokens for next player"
+      
+    notifications_sent:
+      - notification: turnPassed
+        recipients: all_players
+        data:
+          playerId: int
+          tokensToPass: int
+          
+    state_transition: "SkelitsRevenge"
+
+  # --------------------------------------------------------------------------
+  # BATTLE STATE - Combat Actions
+  # --------------------------------------------------------------------------
+  fight_enemy:
+    state: Battle
+    php_method: "fight(bool $useBattleTrack, bool $useItem): string"
+    javascript_call: "this.bgaPerformAction('fight', { useBattleTrack, useItem })"
+    
+    description: "Roll battle die and resolve combat"
+    
+    client_parameters:
+      useBattleTrack:
+        type: bool
+        description: "Whether to add battle track modifier"
+        
+      useItem:
+        type: bool
+        description: "Whether to use item card modifier"
+        
+    server_validation:
+      - "Verify player is in battle"
+      - "Verify current enemy exists"
+      
+    server_side_effects:
+      - "Roll battle die (1-6)"
+      - "Calculate total strength (roll + modifiers)"
+      - "Compare to enemy strength"
+      - "If win: flip token, check for more enemies"
+      - "If lose: apply fatigue, determine retreat/continue"
+      - "If useBattleTrack: reset battle track to lowest cutlass"
+      
+    notifications_sent:
+      - notification: battleUpdate
+        recipients: all_players
+        data:
+          playerId: int
+          enemyId: int
+          outcome: string
+          roll: int
+          modifiers:
+            battleTrack: int
+            item: int
+          totalStrength: int
+          enemyStrength: int
+          fatigueGained: int
+          revealedTokenId: int
+          
+      - notification: battleTrackReset
+        recipients: all_players
+        condition: "if battle track used"
+        
+    state_transition: "Depends on outcome and retreat roll"
+
+  retreat_from_battle:
+    state: Battle
+    php_method: "retreat(): string"
+    javascript_call: "this.bgaPerformAction('retreat', {})"
+    
+    description: "Choose to retreat instead of fighting again (vs Guard only)"
+    
+    server_validation:
+      - "Verify currently fighting Guard"
+      - "Verify retreat is available option"
+      
+    state_transition: "PlayerRetreat"
+
+  # --------------------------------------------------------------------------
+  # CHOOSE ENEMY STATE
+  # --------------------------------------------------------------------------
+  select_enemy:
+    state: ChooseEnemy
+    php_method: "selectEnemy(int $enemyId): string"
+    javascript_call: "this.bgaPerformAction('selectEnemy', { enemyId })"
+    
+    description: "Select which enemy to fight when multiple present"
+    
+    client_parameters:
+      enemyId:
+        type: int
+        description: "ID of token to fight"
+        validation: "Must be in available enemies list"
+        
+    server_validation:
+      - "Verify enemy is in current room"
+      - "Verify enemy is Guard or Skeleton Crew (not revealed)"
+      
+    server_side_effects:
+      - "Set selected enemy as current battle target"
+      
+    notifications_sent:
+      - notification: enemySelected
+        recipients: all_players
+        data:
+          playerId: int
+          enemyId: int
+          
+    state_transition: "Battle"
+
+  # --------------------------------------------------------------------------
+  # PLAYER RETREAT STATE
+  # --------------------------------------------------------------------------
+  choose_retreat_room:
+    state: PlayerRetreat
+    php_method: "chooseRetreatRoom(int $roomId): string"
+    javascript_call: "this.bgaPerformAction('chooseRetreatRoom', { roomId })"
+    
+    description: "Select adjacent room to retreat to after losing battle"
+    
+    client_parameters:
+      roomId:
+        type: int
+        description: "ID of room to retreat to"
+        validation: "Must be in possibleRetreats list"
+        
+    server_validation:
+      - "Verify room is adjacent through door"
+      - "Verify player can enter (fatigue restrictions)"
+      - "Verify room not exploded"
+      
+    server_side_effects:
+      - "Move player to selected room"
+      - "Apply fatigue from movement"
+      
+    notifications_sent:
+      - notification: move
+        recipients: all_players
+        
+    state_transition: "TakeActions if tokens remain, else SkelitsRevenge"
+
+  # --------------------------------------------------------------------------
+  # ITEM SWAP CHOICE STATE
+  # --------------------------------------------------------------------------
+  choose_new_item:
+    state: ItemSwapChoice
+    php_method: "chooseNewItem(int $itemId): string"
+    javascript_call: "this.bgaPerformAction('chooseNewItem', { itemId })"
+    
+    description: "Player whose item was taken chooses replacement"
+    
+    client_parameters:
+      itemId:
+        type: int
+        description: "ID of replacement item"
+        validation: "Must be available on table"
+        
+    server_validation:
+      - "Verify item is on table"
+      
+    server_side_effects:
+      - "Assign item to player"
+      - "Reactivate original active player"
+      
+    notifications_sent:
+      - notification: itemChosen
+        recipients: all_players
+        data:
+          playerId: int
+          itemId: int
+          
+    state_transition: "TakeActions (reactivate original player)"
+
+# ==============================================================================
+# SERVER-TO-CLIENT NOTIFICATIONS (State Updates)
+# ==============================================================================
+# These are sent from PHP to update all clients about game state changes
+
+server_notifications:
+  
+  # --------------------------------------------------------------------------
+  # GAME SETUP & STATE NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  gameSetupComplete:
+    description: "Initial game state after setup"
+    recipients: all_players
+    timing: "After GameSetup state completes"
+    
+    args:
+      board:
+        type: object
+        description: "Initial 4 tiles with positions and fire"
+        
+      players:
+        type: array
+        description: "Player data (character, item, fatigue, position)"
+        
+      tokens:
+        type: array
+        description: "All tokens and their locations"
+        
+    frontend_handling:
+      - "Initialize board display"
+      - "Create player pieces"
+      - "Display initial fire dice"
+      - "Setup player dashboards"
+
+  newPlayerTurn:
+    description: "New player becomes active"
+    recipients: all_players
+    timing: "On entering PlayerTurn state"
+    
+    args:
+      playerId:
+        type: int
+        
+      actionTokens:
+        type: int
+        description: "Base tokens + passed tokens"
+        
+    frontend_handling:
+      - "Highlight active player"
+      - "Display action tokens"
+      - "If current player: show 'Your Turn' message"
+
+  # --------------------------------------------------------------------------
+  # ROOM & BOARD NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  tilePlaced:
+    description: "New room tile placed on board"
+    recipients: all_players
+    timing: "After SearchShip action"
+    
+    args:
+      playerId: int
+      tileId: int
+      x: int
+      y: int
+      orientation: int
+      fireLevel: int
+      fireDieColor: string
+      tokenId: int
+      tokenType: string
+      tokenRevealed: bool
+      hasDinghy: bool
+      
+    frontend_handling:
+      - "Animate tile sliding into position"
+      - "Display fire die with correct color and pips"
+      - "Display token (Guard/Skeleton/Trapdoor)"
+      - "If dinghy: show second exit marker"
+      - "Update board boundaries"
+      - "Enable room highlighting for actions"
+
+  fireLevelChange:
+    description: "Fire level changed in one or more rooms"
+    recipients: all_players
+    timing: "After fightFire action or Skelit's Revenge"
+    
+    args:
+      changes:
+        type: array
+        items:
+          roomId: int
+          oldLevel: int
+          newLevel: int
+          dieColor: string
+          
+    frontend_handling:
+      - "Animate fire die changing"
+      - "Update pip count on die"
+      - "If level = 0: remove die with animation"
+      - "If level increases: show flame effect"
+      - "Update room danger highlighting"
+
+  explosion:
+    description: "Powder keg or room explosion"
+    recipients: all_players
+    timing: "During Skelit's Revenge or fire effects"
+    
+    args:
+      type: string
+      sourceRoomId: int
+      affectedRooms:
+        type: array
+        items:
+          roomId: int
+          newFireLevel: int
+      destroyedTokens: array
+      affectedPirates: array
+      newExplosionTrackValue: int
+      
+    frontend_handling:
+      - "Play explosion animation"
+      - "If room explosion: flip tile face down"
+      - "Update explosion track marker"
+      - "Remove destroyed tokens"
+      - "Handle pirate deaths"
+      - "Show chain reaction if multiple"
+
+  # --------------------------------------------------------------------------
+  # MOVEMENT & POSITIONING NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  move:
+    description: "Pirate moves between rooms"
+    recipients: all_players
+    timing: "After walk/run action"
+    
+    args:
+      playerId: int
+      fromRoomId: int
+      toRoomId: int
+      path:
+        type: array
+        description: "For run action: intermediate rooms"
+        
+    frontend_handling:
+      - "Animate pirate movement along path"
+      - "Update pirate position"
+      - "Trigger fatigue animation if applicable"
+
+  # --------------------------------------------------------------------------
+  # TOKEN & ITEM NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  tokenChange:
+    description: "Token picked up or dropped"
+    recipients: all_players
+    timing: "After pickupToken or dropToken"
+    
+    args:
+      tokenId: int
+      tokenType: string
+      fromLocation: string
+      toLocation: string
+      playerId: int
+      
+    frontend_handling:
+      - "Animate token movement"
+      - "Update player inventory display"
+      - "Update room contents"
+      - "If treasure: show special effect"
+
+  tokenRevealed:
+    description: "Enemy token flipped to reveal Cutlass/Grog"
+    recipients: all_players
+    timing: "After winning battle"
+    
+    args:
+      tokenId: int
+      revealedType: string
+      value: int
+      roomId: int
+      
+    frontend_handling:
+      - "Animate token flip"
+      - "Show revealed token type"
+
+  tokenDestroyed:
+    description: "Token destroyed in explosion"
+    recipients: all_players
+    
+    args:
+      tokenId: int
+      roomId: int
+      treasureLost: bool
+      
+    frontend_handling:
+      - "Animate token destruction"
+      - "Remove from board"
+      - "If treasure: update treasure count"
+
+  # --------------------------------------------------------------------------
+  # PLAYER STATE NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  fatigueChange:
+    description: "Player fatigue increases or decreases"
+    recipients: all_players
+    timing: "After movement, rest, battle, etc."
+    
+    args:
+      playerId: int
+      oldFatigue: int
+      newFatigue: int
+      reason: string
+      maxAllowedRooms: int
+      
+    frontend_handling:
+      - "Update fatigue meter"
+      - "Animate change (red for increase, green for decrease)"
+      - "Update movement restrictions display"
+      - "If near death: show warning"
+
+  battleTrackChange:
+    description: "Player battle track position changes"
+    recipients: all_players
+    
+    args:
+      playerId: int
+      oldPosition: int
+      newPosition: int
+      
+    frontend_handling:
+      - "Animate battle token movement"
+      - "Update battle track display"
+
+  battleTrackReset:
+    description: "Battle track resets to cutlass marker"
+    recipients: all_players
+    timing: "After using battle track in fight"
+    
+    args:
+      playerId: int
+      newPosition: int
+      resetToMarker: int
+      
+    frontend_handling:
+      - "Animate token sliding down"
+      - "Show reset effect"
+
+  cutlassPlaced:
+    description: "Cutlass token placed on battle track"
+    recipients: all_players
+    
+    args:
+      playerId: int
+      position: int
+      tokenId: int
+      
+    frontend_handling:
+      - "Display cutlass marker on track"
+      - "If battle token on same space: move it up"
+
+  itemSwap:
+    description: "Player swaps item cards"
+    recipients: all_players
+    
+    args:
+      playerId: int
+      oldItemId: int
+      newItemId: int
+      oldItemLocation: string
+      
+    frontend_handling:
+      - "Update player item display"
+      - "Move old item to table/other player"
+      - "Show card swap animation"
+
+  itemChosen:
+    description: "Player chooses replacement item"
+    recipients: all_players
+    timing: "During ItemSwapChoice state"
+    
+    args:
+      playerId: int
+      itemId: int
+      
+    frontend_handling:
+      - "Update player item display"
+      - "Remove item from table"
+
+  # --------------------------------------------------------------------------
+  # BATTLE NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  battleStart:
+    description: "Battle begins with enemy"
+    recipients: all_players
+    timing: "On entering Battle state"
+    
+    args:
+      playerId: int
+      enemyId: int
+      enemyType: string
+      enemyStrength: int
+      roomId: int
+      treasureAutoDropped: bool
+      
+    frontend_handling:
+      - "Show battle UI"
+      - "Display enemy strength"
+      - "Show fight/retreat options"
+      - "If treasure dropped: animate"
+
+  battleRoll:
+    description: "Battle die rolled"
+    recipients: all_players
+    
+    args:
+      playerId: int
+      roll: int
+      
+    frontend_handling:
+      - "Animate die roll"
+      - "Display rolled number"
+
+  battleUpdate:
+    description: "Complete battle result"
+    recipients: all_players
+    timing: "After fight action"
+    
+    args:
+      playerId: int
+      enemyId: int
+      outcome: string
+      roll: int
+      modifiers:
+        battleTrack: int
+        item: int
+      totalStrength: int
+      enemyStrength: int
+      fatigueGained: int
+      revealedTokenId: int
+      retreatRoll: int
+      retreatOutcome: string
+      
+    frontend_handling:
+      - "Show strength calculation"
+      - "Display win/loss with animation"
+      - "If win: flip enemy token"
+      - "If loss: show fatigue gained"
+      - "If retreat: show retreat options"
+
+  enemySelected:
+    description: "Player selected enemy to fight"
+    recipients: all_players
+    timing: "During ChooseEnemy state"
+    
+    args:
+      playerId: int
+      enemyId: int
+      
+    frontend_handling:
+      - "Highlight selected enemy"
+      - "Transition to battle UI"
+
+  # --------------------------------------------------------------------------
+  # DECKHAND NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  deckhandChange:
+    description: "Deckhand count changes in room"
+    recipients: all_players
+    
+    args:
+      changes:
+        type: array
+        items:
+          roomId: int
+          oldCount: int
+          newCount: int
+          
+    frontend_handling:
+      - "Update deckhand counter display"
+      - "Show/hide deckhand figures"
+      - "Update room accessibility"
+
+  deckhandSpread:
+    description: "Deckhands spread to adjacent rooms"
+    recipients: all_players
+    timing: "During Skelit's Revenge"
+    
+    args:
+      movements:
+        type: array
+        items:
+          fromRoomId: int
+          toRoomId: int
+          
+    frontend_handling:
+      - "Animate deckhand movement"
+      - "Update counters in all affected rooms"
+
+  # --------------------------------------------------------------------------
+  # SKELETON CREW NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  skeletonCrewMove:
+    description: "Skeleton Crew token moves toward nearest pirate"
+    recipients: all_players
+    timing: "During Skelit's Revenge"
+    
+    args:
+      tokenId: int
+      fromRoomId: int
+      toRoomId: int
+      targetPlayerId: int
+      
+    frontend_handling:
+      - "Animate skeleton movement"
+      - "Update token position"
+      - "If enters room with pirate: trigger battle highlight"
+
+  skelitCardReveal:
+    description: "Skelit's Revenge card revealed"
+    recipients: all_players
+    timing: "On entering SkelitsRevenge state"
+    
+    args:
+      cardId: int
+      cardName: string
+      effects:
+        fire:
+          type: array
+          description: "Fire effects by color"
+        deckhands: string
+        skeletonMove: bool
+        explosionTrackIcon: int
+        
+    frontend_handling:
+      - "Display card with animation"
+      - "Show card effects summary"
+      - "Highlight affected rooms"
+
+  # --------------------------------------------------------------------------
+  # PIRATE DEATH & RESPAWN NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  pirateDied:
+    description: "Pirate reaches death fatigue threshold"
+    recipients: all_players
+    
+    args:
+      playerId: int
+      roomId: int
+      deathReason: string
+      newCharacterId: int
+      newCharacterName: string
+      newItemId: int
+      droppedTokens:
+        type: array
+        description: "Tokens dropped in death room"
+      spawnRoomId: int
+      
+    frontend_handling:
+      - "Show death animation"
+      - "Remove pirate from board"
+      - "Display new character card"
+      - "Spawn new pirate at entrance"
+      - "Reset fatigue and battle track displays"
+      - "Show dropped tokens"
+
+  # --------------------------------------------------------------------------
+  # GAME END NOTIFICATIONS
+  # --------------------------------------------------------------------------
+  gameEnd:
+    description: "Game ends (win or loss)"
+    recipients: all_players
+    timing: "On entering GameEnd state"
+    
+    args:
+      result: string
+      reason: string
+      statistics:
+        treasuresLooted: int
+        tilesPlaced: int
+        piratesLost: int
+        turnsPlayed: int
+        
+    frontend_handling:
+      - "Display game over screen"
+      - "Show win/loss message"
+      - "Display final statistics"
+      - "Show reason for game end"
+
+# ==============================================================================
+# STATE ARGS (getArgs() Return Data)
+# ==============================================================================
+# Data provided to the client when entering each state
+
+state_args:
+  
+  PlayerTurn:
+    description: "Data when new player's turn starts"
+    args:
+      playerId: int
+      actionTokens: int
+      baseTokens: int
+      passedTokens: int
+      
+  SearchShip:
+    description: "Data for tile placement"
+    args:
+      tileId: int
+      tileDoors: int
+      tileColor: string
+      tilePips: int
+      hasPowderKeg: bool
+      hasTrapdoor: bool
+      validPlacements:
+        type: array
+        items:
+          x: int
+          y: int
+          orientation: int
+          
+  TakeActions:
+    description: "Available actions for active player"
+    args:
+      playerId: int
+      actionTokensRemaining: int
+      currentRoomId: int
+      possibleActions:
+        type: array
+        description: "List of action keys: ['walk', 'run', 'fightFire', etc.]"
+      walkTargets:
+        type: array
+        description: "Room IDs accessible by walk"
+      runTargets:
+        type: array
+        description: "Room IDs accessible by run (2 moves)"
+      pickupableTokens:
+        type: array
+        items:
+          tokenId: int
+          tokenType: string
+      swappableItems:
+        type: array
+        items:
+          itemId: int
+          itemName: string
+          location: string
+      carryingTreasure: bool
+      canExitShip: bool
+      
+  Battle:
+    description: "Battle state data"
+    args:
+      playerId: int
+      enemyId: int
+      enemyType: string
+      enemyStrength: int
+      playerBattleTrack: int
+      playerItemModifier: int
+      canRetreat: bool
+      mustFightAgain: bool
+      
+  ChooseEnemy:
+    description: "Enemy selection data"
+    args:
+      playerId: int
+      availableEnemies:
+        type: array
+        items:
+          tokenId: int
+          tokenType: string
+          strength: int
+          
+  PlayerRetreat:
+    description: "Retreat options"
+    args:
+      playerId: int
+      possibleRetreats:
+        type: array
+        items:
+          roomId: int
+          fireLevel: int
+          fatigueGain: int
+          
+  ItemSwapChoice:
+    description: "Item selection for player whose item was taken"
+    args:
+      playerId: int
+      availableItems:
+        type: array
+        items:
+          itemId: int
+          itemName: string
+      originalActivePlayerId: int
+
+# ==============================================================================
+# FRONTEND IMPLEMENTATION REQUIREMENTS
+# ==============================================================================
+
+frontend_requirements:
+  
+  # --------------------------------------------------------------------------
+  # TYPESCRIPT MODULES STRUCTURE
+  # --------------------------------------------------------------------------
+  typescript_modules:
+    main_game_class:
+      file: "src/deadmenpax.ts"
+      responsibilities:
+        - "Extend BGA Gamegui class"
+        - "Setup notification handlers"
+        - "Manage game state synchronization"
+        - "Route user interactions to server"
+        
+    board_manager:
+      file: "src/board/BoardManager.ts"
+      responsibilities:
+        - "Render game board and tiles"
+        - "Handle tile placement animations"
+        - "Display fire dice and tokens"
+        - "Manage room highlighting"
+        
+    player_dashboard:
+      file: "src/ui/PlayerDashboard.ts"
+      responsibilities:
+        - "Display player stats (fatigue, battle track)"
+        - "Show character and item cards"
+        - "Display action tokens"
+        - "Show player inventory"
+        
+    action_manager:
+      file: "src/actions/ActionManager.ts"
+      responsibilities:
+        - "Enable/disable action buttons based on state"
+        - "Validate player actions client-side"
+        - "Send actions to server"
+        - "Handle action feedback"
+        
+    battle_ui:
+      file: "src/battle/BattleUI.ts"
+      responsibilities:
+        - "Display battle interface"
+        - "Show strength calculations"
+        - "Animate dice rolls"
+        - "Handle fight/retreat choices"
+        
+    notification_handler:
+      file: "src/notifications/NotificationHandler.ts"
+      responsibilities:
+        - "Register all notification subscriptions"
+        - "Route notifications to appropriate handlers"
+        - "Manage notification queuing"
+        - "Handle animation sequencing"
+
+  # --------------------------------------------------------------------------
+  # UI COMPONENTS NEEDED
+  # --------------------------------------------------------------------------
+  ui_components:
+    
+    action_selector:
+      description: "Action button panel for active player"
+      states: ["TakeActions"]
+      features:
+        - "Dynamic button visibility based on available actions"
+        - "Token cost display on each button"
+        - "Disable unavailable actions with tooltips"
+        - "Highlight legal targets when action selected"
+        
+    room_selector:
+      description: "Interactive room highlighting for movement"
+      states: ["TakeActions", "PlayerRetreat"]
+      features:
+        - "Highlight clickable rooms"
+        - "Show fatigue cost on hover"
+        - "Different colors for walk vs run"
+        - "Disable unreachable rooms"
+        
+    tile_placement:
+      description: "Tile placement interface"
+      states: ["SearchShip"]
+      features:
+        - "Draggable tile preview"
+        - "Valid placement zone highlighting"
+        - "Rotation controls"
+        - "Snap to grid"
+        
+    battle_panel:
+      description: "Battle resolution interface"
+      states: ["Battle"]
+      features:
+        - "Enemy strength display"
+        - "Modifier checkboxes"
+        - "Strength calculator preview"
+        - "Fight/retreat buttons"
+        - "Result animation"
+        
+    enemy_selector:
+      description: "Enemy selection interface"
+      states: ["ChooseEnemy"]
+      features:
+        - "Clickable enemy tokens"
+        - "Strength comparison display"
+        - "Confirm selection button"
+        
+    item_selector:
+      description: "Item card selection interface"
+      states: ["TakeActions", "ItemSwapChoice"]
+      features:
+        - "Display available items"
+        - "Show item abilities"
+        - "Indicate source (table/player)"
+        
+    fatigue_meter:
+      description: "Visual fatigue display"
+      states: ["all"]
+      features:
+        - "0-15+ scale with color coding"
+        - "Skull icon at death threshold"
+        - "Restriction indicators (room levels blocked)"
+        - "Change animation"
+        
+    battle_track:
+      description: "Battle strength track display"
+      states: ["all"]
+      features:
+        - "0 to +4 scale"
+        - "Player token position"
+        - "Cutlass markers"
+        - "Use/reset indication"
+
+  # --------------------------------------------------------------------------
+  # NOTIFICATION HANDLER SETUP
+  # --------------------------------------------------------------------------
+  notification_setup:
+    description: "How to register notification handlers in TypeScript"
+    pattern: |
+      setupNotifications(): void {
+        this.notifqueue.setSynchronous('tilePlaced', 500);
+        this.notifqueue.setSynchronous('move', 800);
+        this.notifqueue.setSynchronous('explosion', 1500);
+        
+        dojo.subscribe('tilePlaced', this, 'notif_tilePlaced');
+        dojo.subscribe('move', this, 'notif_move');
+        dojo.subscribe('fireLevelChange', this, 'notif_fireLevelChange');
+        // ... register all notifications
+      }
+      
+      notif_tilePlaced(notif: Notif): void {
+        const { tileId, x, y, orientation, fireLevel } = notif.args;
+        this.boardManager.placeTile(tileId, x, y, orientation);
+        this.boardManager.setFireLevel(tileId, fireLevel);
+      }
+
+  # --------------------------------------------------------------------------
+  # ACTION SENDING PATTERN
+  # --------------------------------------------------------------------------
+  action_sending:
+    description: "How to send actions from client to server"
+    pattern: |
+      onWalkToRoom(roomId: number): void {
+        if (!this.checkAction('walk')) return;
+        
+        this.ajaxcall(
+          '/deadmenpax/deadmenpax/walk.html',
+          { roomId: roomId, lock: true },
+          this,
+          (result) => {}, // Success handled via notifications
+          (error) => this.showError(error)
+        );
+      }
+
+  # --------------------------------------------------------------------------
+  # STATE CHANGE HANDLING
+  # --------------------------------------------------------------------------
+  state_change_handling:
+    description: "Handle state transitions and update UI"
+    pattern: |
+      onEnteringState(stateName: string, args: any): void {
+        console.log('Entering state: ' + stateName, args);
+        
+        switch(stateName) {
+          case 'TakeActions':
+            this.actionManager.updateAvailableActions(args.args);
+            if (this.isCurrentPlayerActive()) {
+              this.actionManager.enableActionButtons();
+            }
+            break;
+            
+          case 'Battle':
+            this.battleUI.showBattlePanel(args.args);
+            break;
+            
+          case 'SearchShip':
+            if (this.isCurrentPlayerActive()) {
+              this.boardManager.enableTilePlacement(args.args);
+            }
+            break;
+        }
+      }
+      
+      onLeavingState(stateName: string): void {
+        switch(stateName) {
+          case 'TakeActions':
+            this.actionManager.disableAllActions();
+            break;
+            
+          case 'Battle':
+            this.battleUI.hideBattlePanel();
+            break;
+        }
+      }
+
+# ==============================================================================
+# IMPLEMENTATION CHECKLIST
+# ==============================================================================
+
+implementation_checklist:
+  
+  server_side:
+    php_state_classes:
+      - "Implement all #[PossibleAction] methods in TakeActions.php"
+      - "Implement battle resolution in Battle.php"
+      - "Implement enemy selection in ChooseEnemy.php"
+      - "Implement retreat logic in PlayerRetreat.php"
+      - "Implement item choice in ItemSwapChoice.php"
+      - "Complete getArgs() methods for all states"
+      
+    game_logic:
+      - "Implement BoardManager methods for tile placement"
+      - "Implement PirateManager for movement and fatigue"
+      - "Implement TokenManager for token operations"
+      - "Implement battle calculation logic"
+      - "Implement Skelit's Revenge card effects"
+      - "Implement win/loss condition checking"
+      
+    notifications:
+      - "Create notification methods for all events"
+      - "Ensure proper notification args structure"
+      - "Test notification synchronization"
+      
+  client_side:
+    typescript_setup:
+      - "Create TypeScript module structure"
+      - "Setup webpack/rollup build process"
+      - "Configure SCSS compilation"
+      - "Setup BGA framework type definitions"
+      
+    ui_components:
+      - "Create board rendering system"
+      - "Implement action button panel"
+      - "Create room selection interface"
+      - "Implement tile placement UI"
+      - "Create battle interface"
+      - "Implement player dashboards"
+      - "Create fatigue and battle track displays"
+      
+    notification_handlers:
+      - "Implement all notification handlers"
+      - "Setup notification queue timing"
+      - "Create animation sequences"
+      - "Test notification synchronization"
+      
+    action_handlers:
+      - "Implement all client action methods"
+      - "Add client-side validation"
+      - "Setup error handling"
+      - "Add loading states"
+      
+  testing:
+    server_tests:
+      - "Create PHPUnit tests for each action"
+      - "Test state transitions"
+      - "Test win/loss conditions"
+      - "Test battle calculations"
+      
+    client_tests:
+      - "Create Vitest tests for TypeScript modules"
+      - "Test notification handling"
+      - "Test UI state management"
+      - "Test action validation"
+      
+    integration_tests:
+      - "Test full game flow"
+      - "Test multiplayer synchronization"
+      - "Test edge cases and error handling"
+      - "Test browser compatibility"
+
+# ==============================================================================
+# NOTES
+# ==============================================================================
+
+implementation_notes:
+  
+  notification_timing:
+    - "Use setSynchronous() for animations that must complete"
+    - "Queue long animations (explosions, multiple movements)"
+    - "Keep notification handlers focused and fast"
+    - "Use CSS animations over JavaScript where possible"
+    
+  error_handling:
+    - "Always validate on server even if client validates"
+    - "Provide clear error messages to players"
+    - "Log errors for debugging"
+    - "Handle network failures gracefully"
+    
+  performance:
+    - "Lazy load components as needed"
+    - "Use sprite sheets for tokens and dice"
+    - "Optimize board rendering for large grids"
+    - "Debounce rapid user interactions"
+    
+  accessibility:
+    - "Provide keyboard navigation"
+    - "Add ARIA labels to interactive elements"
+    - "Ensure color contrast for visibility"
+    - "Support screen readers where possible"

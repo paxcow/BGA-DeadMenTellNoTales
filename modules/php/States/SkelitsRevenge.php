@@ -9,58 +9,29 @@ use Bga\Games\DeadMenPax\Game;
 
 class SkelitsRevenge extends GameState
 {
-    /**
-     * Constructor.
-     *
-     * @param Game $game The game instance.
-     */
-    function __construct(
-        protected Game $game,
-    ) {
+    public function __construct(protected Game $game)
+    {
         parent::__construct($game,
-            id: 12,
+            id: 6,
             type: StateType::GAME,
-            name: "skelitsRevenge",
-            description: "Skelit's Revenge strikes back...",
-            action: "stSkelitsRevenge",
+            description: clienttranslate('${actplayer} resolves Skelit\'s Revenge card effects'),
+            descriptionMyTurn: clienttranslate('${you} resolve Skelit\'s Revenge card effects'),
             transitions: [
-                "nextPlayer" => PlayerTurn::class,
-                "gameEnd" => GameEnd::class
-            ],
+                'next'           => PlayerTurn::class,
+                'resolveBattles' => ResolveBattles::class,
+                'gameEnd'        => GameEnd::class,
+            ]
         );
     }
 
-    /**
-     * Called when entering the game state.
-     *
-     * @param int $activePlayerId The active player ID.
-     * @return string
-     */
-    function onEnteringState(int $activePlayerId): string {
-        // Draw and resolve Skelit's Revenge card
-        $card = $this->game->drawSkelitsRevengeCard();
-        
-        // Resolve fire effects
-        $this->game->resolveFireEffects($card);
-        
-        // Resolve deckhand effects
-        $this->game->resolveDeckhandEffects($card);
-        
-        // Resolve skeleton crew movement
-        $this->game->resolveSkeletonCrewMovement($card);
-        
-        // Check for explosions and game end conditions
-        if ($this->game->checkExplosions()) {
-            return GameEnd::class;
-        }
-        
-        // Check if game should end
-        if ($this->game->checkGameEnd()) {
-            return GameEnd::class;
-        }
-        
-        // Move to next player
-        $this->game->activeNextPlayer();
+    public function getArgs(): array
+    {
+        return []; // TODO: provide card draw details
+    }
+
+    public function onEnteringState(): string
+    {
+        // TODO: implement Skelit's Revenge effects
         return PlayerTurn::class;
     }
 }

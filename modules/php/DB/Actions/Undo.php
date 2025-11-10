@@ -2,11 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Bga\Games\deadmenpax;
+namespace Bga\Games\DeadMenPax\DB\Actions;
 
 use BgaSystemException;
-use Bga\Games\deadmenpax\Actions\ActionManager;
-use Bga\Games\deadmenpax\Actions\ActionNotifier;
+use Bga\Games\DeadMenPax\NotificationManager;
 
 /**
  * Trait providing undo functionality by replaying and reversing actions.
@@ -58,7 +57,7 @@ trait Undo
             if ($lastAction) {
                 $this->trace("UNDO " . get_class($lastAction));
                 $lastAction->setHandlers($handlers);
-                $notifier = new ActionNotifier($playerId);
+                $notifier = new NotificationManager($this);
                 $lastAction->undo($notifier);
                 $this->actionManager->removeAction((string)$lastAction->action_id);
             }
